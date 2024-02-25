@@ -1,19 +1,22 @@
 {
   description = "A very basic flake";
 
-  outputs = { self, nixpkgs }:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
-    in {
-      devShells.${system}.default = pkgs.mkShell {
-        nativeBuildInputs = with pkgs; [
-          SDL2
-          SDL2_image
-          libffi
-          lua5_4
-          pkg-config
-        ];
+  inputs = { flake-parts.url = "github:hercules-ci/flake-parts"; };
+
+  outputs = inputs@{ self, nixpkgs, flake-parts }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems =
+        [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" "aarch64-linux" ];
+      perSystem = { config, pkgs, ... }: {
+        devShells.default = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            SDL2
+            SDL2_image
+            libffi
+            lua5_4
+            pkg-config
+          ];
+        };
       };
     };
 }

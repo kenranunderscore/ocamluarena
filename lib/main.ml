@@ -19,7 +19,7 @@ let lua_get_color ls =
   let red = Lua.tointeger ls (-1) in
   Lua.getfield ls (-2) "green";
   let green = Lua.tointeger ls (-1) in
-  Lua.getfield ls (-3) "green";
+  Lua.getfield ls (-3) "blue";
   let blue = Lua.tointeger ls (-1) in
   Lua.pop ls 4;
   { red; green; blue }

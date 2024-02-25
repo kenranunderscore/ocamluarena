@@ -1,6 +1,3 @@
-module LuaL = Lua_api.LuaL
-module Lua = Lua_api.Lua
-
 let failwithf f = Printf.ksprintf failwith f
 
 type color =
@@ -29,10 +26,10 @@ let lua_get_color ls =
 ;;
 
 let lua_load_player path =
-  let ls = LuaL.newstate () in
-  LuaL.openlibs ls;
+  let ls = Lua.newstate () in
+  Lua.openlibs ls;
   (* TODO: clean error handling *)
-  if LuaL.dofile ls path
+  if Lua.dofile ls path
   then (
     Printf.printf "loading player from '%s'...\n%!" path;
     Lua.getfield ls (-1) "meta";
@@ -40,15 +37,23 @@ let lua_load_player path =
     match Lua.tostring ls (-1) with
     | None -> failwithf "player.meta.name missing\n%!"
     | Some name ->
-       (* pop the 'name' *)
-       Lua.pop ls 1;
-       let color = lua_get_color ls in
-       (* pop the 'meta' table *)
-       Lua.pop ls 1;
-       let player = { name; color; x = 100; y = 300 } in
-       (player, ls)
-  )
+      (* pop the 'name' *)
+      Lua.pop ls 1;
+      let color = lua_get_color ls in
+      (* pop the 'meta' table *)
+      Lua.pop ls 1;
+      let player = { name; color; x = 100; y = 300 } in
+      player, ls)
   else failwithf "player could not be loaded: '%s'\n%!" path
+;;
+
+let create_lua_api game_state =
+  let lua_x l =
+    Lua.pushinteger l (fst !game_state).x;
+    1
+  in
+  let _, ls = !game_state in
+  Lua.pushmodule ls "me" [ "x", lua_x ]
 ;;
 
 let draw_player renderer player =
@@ -68,19 +73,25 @@ let main_loop renderer game_state =
       | `Key_up ->
         (match Sdl.Event.(get e keyboard_scancode) |> Sdl.Scancode.enum with
          | `Escape -> quit := true
+         | `T ->
+           let _, ls = !game_state in
+           Lua.getfield ls 1 "test";
+           Lua.call ls 0 0
          | _ -> ())
       | _ -> ()
     done;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
-    draw_player renderer !game_state;
+    draw_player renderer (fst !game_state);
     Sdl.render_present renderer
   done
 ;;
 
 let main () =
-  let player, _ls = lua_load_player "players/test.lua" in
+  let player, ls = lua_load_player "players/test.lua" in
+  let game_state = ref (player, ls) in
+  create_lua_api game_state;
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer ~w:1000 ~h:800 "Arena" (fun _window renderer ->
-      main_loop renderer (ref player)))
+      main_loop renderer game_state))
 ;;

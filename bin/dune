@@ -1,4 +1,4 @@
 (executable
- (public_name ocamluarena)
+ (public_name arena)
  (name main)
- (libraries ocamluarena))
+ (libraries arena))

@@ -1,2 +1,6 @@
 (library
- (name ocamluarena))
+ (name arena)
+ (libraries
+  tsdl
+  tsdl-image
+  ocaml-lua))

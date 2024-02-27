@@ -1,16 +1,10 @@
 let failwithf f = Printf.ksprintf failwith f
 
-type color =
-  { red : int
-  ; green : int
-  ; blue : int
-  }
-
 type player =
   { name : string
   ; x : int
   ; y : int
-  ; color : color
+  ; color : Color.t
   }
 
 let lua_get_color ls =
@@ -22,7 +16,7 @@ let lua_get_color ls =
   Lua.getfield ls (-3) "blue";
   let blue = Lua.tointeger ls (-1) in
   Lua.pop ls 4;
-  { red; green; blue }
+  Color.make ~red ~green ~blue
 ;;
 
 let lua_load_player path =

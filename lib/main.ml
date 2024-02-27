@@ -19,6 +19,7 @@ let lua_get_color ls =
   Color.make ~red ~green ~blue
 ;;
 
+(* add some unique identifier *)
 let lua_load_player path =
   let ls = Lua.newstate () in
   Lua.openlibs ls;
@@ -41,13 +42,22 @@ let lua_load_player path =
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
+type game_state = { players : (player * Lua.state) list }
+
+let find_player name game_state =
+  let players = !game_state.players in
+  players |> List.find (fun p -> (fst p).name == name)
+;;
+
 let create_lua_api game_state =
-  let lua_x l =
-    Lua.pushinteger l (fst !game_state).x;
+  let lua_x name l =
+    let player = game_state |> find_player name |> fst in
+    Lua.pushinteger l player.x;
     1
   in
-  let _, ls = !game_state in
-  Lua.pushmodule ls "me" [ "x", lua_x ]
+  (* let _, ls = !game_state in *)
+  let all_players = !game_state.players in
+  all_players |> List.iter (fun (p, ls) -> Lua.pushmodule ls "me" [ "x", lua_x p.name ])
 ;;
 
 let draw_player renderer player =
@@ -68,7 +78,8 @@ let main_loop renderer game_state =
         (match Sdl.Event.(get e keyboard_scancode) |> Sdl.Scancode.enum with
          | `Escape -> quit := true
          | `T ->
-           let _, ls = !game_state in
+           let p, ls = List.nth !game_state.players 1 in
+           Printf.printf "player: %s\n%!" p.name;
            Lua.getfield ls 1 "test";
            Lua.call ls 0 0
          | _ -> ())
@@ -76,14 +87,21 @@ let main_loop renderer game_state =
     done;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
-    draw_player renderer (fst !game_state);
+    List.iter (fun (p, _) -> draw_player renderer p) !game_state.players;
     Sdl.render_present renderer
   done
 ;;
 
 let main () =
-  let player, ls = lua_load_player "players/test.lua" in
-  let game_state = ref (player, ls) in
+  let player_dir = "players" in
+  let player_files = Sys.readdir player_dir in
+  let players =
+    player_files
+    |> Array.to_list
+    |> List.filter (String.ends_with ~suffix:"lua")
+    |> List.map (fun f -> lua_load_player (Filename.concat player_dir f))
+  in
+  let game_state = ref { players } in
   create_lua_api game_state;
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer ~w:1000 ~h:800 "Arena" (fun _window renderer ->

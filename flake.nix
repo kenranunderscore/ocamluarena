@@ -13,7 +13,7 @@
             SDL2
             SDL2_image
             libffi
-            lua5_4
+            lua5_1
             pkg-config
           ];
         };

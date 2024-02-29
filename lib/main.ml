@@ -17,8 +17,8 @@ type player_state =
   }
 
 type game_state =
-  { player1 : player_state
-  ; player2 : player_state
+  { player1 : player_state ref
+  ; player2 : player_state ref
   }
 
 let lua_get_color ls =
@@ -56,24 +56,14 @@ let lua_load_player path =
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
-let create_lua_api game_state =
-  let state = !game_state in
-  let ls1 = state.player1.lua_state in
+let create_lua_api player_state =
+  let ls = !player_state.lua_state in
   Lua.pushmodule
-    ls1
+    ls
     "me"
     [ ( "x"
       , fun l ->
-          Lua.pushinteger l !game_state.player1.pos.x;
-          1 )
-    ];
-  let ls2 = state.player2.lua_state in
-  Lua.pushmodule
-    ls2
-    "me"
-    [ ( "x"
-      , fun l ->
-          Lua.pushinteger l !game_state.player2.pos.x;
+          Lua.pushinteger l !player_state.pos.x;
           1 )
     ]
 ;;
@@ -96,8 +86,7 @@ let main_loop renderer game_state =
         (match Sdl.Event.(get e keyboard_scancode) |> Sdl.Scancode.enum with
          | `Escape -> quit := true
          | `T ->
-           let state = !game_state in
-           [ state.player1; state.player2 ]
+           [ !(game_state.player1); !(game_state.player2) ]
            |> List.iter (fun ps ->
              Printf.printf "player: %s\n%!" ps.player.name;
              Lua.getfield ps.lua_state 1 "test";
@@ -107,19 +96,20 @@ let main_loop renderer game_state =
     done;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
-    !game_state.player1 |> draw_player renderer;
-    !game_state.player2 |> draw_player renderer;
+    !(game_state.player1) |> draw_player renderer;
+    !(game_state.player2) |> draw_player renderer;
     Sdl.render_present renderer
   done
 ;;
 
 let main () =
   let p1, ls1 = lua_load_player "players/lloyd.lua" in
+  let player1 = ref { player = p1; pos = { x = 100; y = 50 }; lua_state = ls1 } in
+  create_lua_api player1;
   let p2, ls2 = lua_load_player "players/cole.lua" in
-  let player1 = { player = p1; pos = { x = 100; y = 50 }; lua_state = ls1 } in
-  let player2 = { player = p2; pos = { x = 400; y = 250 }; lua_state = ls2 } in
-  let game_state = ref { player1; player2 } in
-  create_lua_api game_state;
+  let player2 = ref { player = p2; pos = { x = 400; y = 250 }; lua_state = ls2 } in
+  create_lua_api player2;
+  let game_state = { player1; player2 } in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer ~w:1000 ~h:800 "Arena" (fun _window renderer ->
       main_loop renderer game_state))

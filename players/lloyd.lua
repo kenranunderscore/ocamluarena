@@ -13,7 +13,7 @@ log("reporting in")
 
 function m.test()
   log("in test")
-  log(me.x())
+  log("my position is: (" .. me.x() .. "," .. me.y() .. ")")
 end
 
 return m

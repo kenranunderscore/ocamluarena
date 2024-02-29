@@ -65,6 +65,10 @@ let create_lua_api player_state =
       , fun l ->
           Lua.pushinteger l !player_state.pos.x;
           1 )
+    ; ( "y"
+      , fun l ->
+          Lua.pushinteger l !player_state.pos.y;
+          1 )
     ]
 ;;
 

@@ -11,9 +11,4 @@ end
 
 log("reporting in")
 
-function m.test()
-  log("in test")
-  log(me.x())
-end
-
 return m

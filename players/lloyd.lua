@@ -9,11 +9,10 @@ function log(msg)
   print("[" .. m.meta.name .. "] " .. msg)
 end
 
-log("reporting in")
-
-function m.test()
-  log("in test")
-  log("my position is: (" .. me.x() .. "," .. me.y() .. ")")
+function m.on_tick(n)
+  log("got tick event: " .. n)
 end
+
+log("reporting in")
 
 return m

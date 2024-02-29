@@ -82,22 +82,29 @@ let draw_player renderer player =
 let main_loop renderer game_state =
   let e = Sdl.Event.create () in
   let quit = ref false in
+  let tick = ref 0 in
   while not !quit do
+    tick := !tick + 1;
     while Sdl.poll_event e && not !quit do
       match Sdl.Event.(enum (get e typ)) with
       | `Quit -> quit := true
       | `Key_up ->
         (match Sdl.Event.(get e keyboard_scancode) |> Sdl.Scancode.enum with
          | `Escape -> quit := true
-         | `T ->
-           [ !(game_state.player1); !(game_state.player2) ]
-           |> List.iter (fun ps ->
-             Printf.printf "player: %s\n%!" ps.player.name;
-             Lua.getfield ps.lua_state 1 "test";
-             Lua.call ps.lua_state 0 0)
          | _ -> ())
       | _ -> ()
     done;
+    [ !(game_state.player1); !(game_state.player2) ]
+    |> List.iter (fun ps ->
+      Printf.printf "  asking player: %s\n%!" ps.player.name;
+      let size = Lua.gettop ps.lua_state in
+      Printf.printf "  stack size: %i\n%!" size;
+      Lua.getfield ps.lua_state 1 "on_tick";
+      if Lua.isfunction ps.lua_state (-1)
+      then (
+        Lua.pushinteger ps.lua_state !tick;
+        Lua.call ps.lua_state 1 0)
+      else Lua.pop ps.lua_state 1);
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     !(game_state.player1) |> draw_player renderer;

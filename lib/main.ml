@@ -72,6 +72,13 @@ let create_lua_api player_state =
     ]
 ;;
 
+let load_player path =
+  let player, lua_state = lua_load_player ("players/" ^ path) in
+  let player_state = ref { player; pos = { x = 100; y = 50 }; lua_state } in
+  create_lua_api player_state;
+  player_state
+;;
+
 let draw_player renderer player =
   let rect = Sdl.Rect.create ~x:player.pos.x ~y:player.pos.y ~w:50 ~h:50 in
   let color = player.player.color in
@@ -114,12 +121,8 @@ let main_loop renderer game_state =
 ;;
 
 let main () =
-  let p1, ls1 = lua_load_player "players/lloyd.lua" in
-  let player1 = ref { player = p1; pos = { x = 100; y = 50 }; lua_state = ls1 } in
-  create_lua_api player1;
-  let p2, ls2 = lua_load_player "players/cole.lua" in
-  let player2 = ref { player = p2; pos = { x = 400; y = 250 }; lua_state = ls2 } in
-  create_lua_api player2;
+  let player1 = load_player "lloyd.lua" in
+  let player2 = load_player "cole.lua" in
   let game_state = { player1; player2 } in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer ~w:1000 ~h:800 "Arena" (fun _window renderer ->

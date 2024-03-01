@@ -9,13 +9,7 @@
         [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" "aarch64-linux" ];
       perSystem = { config, pkgs, ... }: {
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            SDL2
-            SDL2_image
-            libffi
-            lua5_1
-            pkg-config
-          ];
+          packages = with pkgs; [ SDL2 SDL2_image libffi lua5_1 pkg-config ];
         };
       };
     };

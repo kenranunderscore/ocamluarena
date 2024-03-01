@@ -104,14 +104,12 @@ let main_loop renderer game_state =
     [ !(game_state.player1); !(game_state.player2) ]
     |> List.iter (fun ps ->
       Printf.printf "  asking player: %s\n%!" ps.player.name;
-      let size = Lua.gettop ps.lua_state in
-      Printf.printf "  stack size: %i\n%!" size;
       Lua.getfield ps.lua_state 1 "on_tick";
-      if Lua.isfunction ps.lua_state (-1)
-      then (
+      if Lua.isnil ps.lua_state (-1)
+      then Lua.pop ps.lua_state 1
+      else (
         Lua.pushinteger ps.lua_state !tick;
-        Lua.call ps.lua_state 1 0)
-      else Lua.pop ps.lua_state 1);
+        Lua.call ps.lua_state 1 0));
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     !(game_state.player1) |> draw_player renderer;

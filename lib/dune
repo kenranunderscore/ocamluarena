@@ -1,5 +1,6 @@
 (library
  (name arena)
+ (preprocess (pps ppx_deriving.show))
  (libraries
   tsdl
   tsdl-image

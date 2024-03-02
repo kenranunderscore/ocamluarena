@@ -19,6 +19,6 @@
  (name ocamluarena)
  (synopsis "wip")
  (description "work in progress")
- (depends ocaml dune)
+ (depends ocaml dune ppx_deriving)
  (tags
   (topics "to describe" your project)))

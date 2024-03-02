@@ -11,6 +11,7 @@ end
 
 function m.on_tick(n)
   log("got tick event: " .. n)
+  return { me.move(n) }
 end
 
 log("reporting in")

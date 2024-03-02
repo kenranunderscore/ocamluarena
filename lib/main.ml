@@ -10,10 +10,17 @@ type position =
   ; y : int
   }
 
+(* TODO: can we use userdata here? *)
+type player_command =
+  | Move of float
+  | Turn_right of float
+[@@deriving show]
+
 type player_state =
   { player : player
-  ; pos : position
   ; lua_state : Lua.state
+  ; pos : position
+  ; commands : player_command list
   }
 
 type game_state =
@@ -69,6 +76,12 @@ let create_lua_api player_state =
       , fun l ->
           Lua.pushinteger l !player_state.pos.y;
           1 )
+    ; ( "move"
+      , fun l ->
+          let distance = Lua.tonumber l (-1) in
+          Lua.pop ls 1;
+          Lua.newuserdata ls (Move distance);
+          1 )
     ]
 ;;
 
@@ -81,7 +94,7 @@ let load_player path =
     | "cole.lua" -> { x = 400; y = 450 }
     | _ -> { x = 0; y = 0 }
   in
-  let player_state = ref { player; pos; lua_state } in
+  let player_state = ref { player; pos; lua_state; commands = [] } in
   create_lua_api player_state;
   player_state
 ;;
@@ -94,15 +107,39 @@ let draw_player renderer player =
 ;;
 
 let run_tick game_state tick =
-  [ !(game_state.player1); !(game_state.player2) ]
-  |> List.iter (fun ps ->
-    Printf.printf "  asking player: %s\n%!" ps.player.name;
-    Lua.getfield ps.lua_state 1 "on_tick";
-    if Lua.isnil ps.lua_state (-1)
-    then Lua.pop ps.lua_state 1
-    else (
-      Lua.pushinteger ps.lua_state !tick;
-      Lua.call ps.lua_state 1 0))
+  let [ [ cmd ]; _ ] =
+    [ !(game_state.player1); !(game_state.player2) ]
+    |> List.map (fun ps ->
+      Printf.printf "  asking player: %s\n%!" ps.player.name;
+      let ls = ps.lua_state in
+      Lua.getfield ls 1 "on_tick";
+      if Lua.isnil ls (-1)
+      then (
+        Lua.pop ls 1;
+        [])
+      else (
+        Lua.pushinteger ps.lua_state !tick;
+        Lua.call ls 1 1;
+        if Lua.istable ls (-1)
+        then (
+          let size = Lua.objlen ls (-1) in
+          Lua.pushinteger ls 1;
+          Lua.gettable ls (-2);
+          let cmds =
+            match Lua.touserdata ls (-1) with
+            | Some (`Userdata cmd) ->
+              let commands = [ cmd ] in
+              commands
+            | _ -> []
+          in
+          Lua.pop ls 2;
+          cmds)
+        else failwith "expected table to be returned"))
+  in
+  let s = !(game_state.player1) in
+  Printf.printf "commands size: %i\n%!" (List.length s.commands);
+  print_endline (show_player_command cmd);
+  game_state.player1 := { s with commands = [ cmd ] }
 ;;
 
 let main_loop renderer game_state =
@@ -126,7 +163,7 @@ let main_loop renderer game_state =
     !(game_state.player1) |> draw_player renderer;
     !(game_state.player2) |> draw_player renderer;
     Sdl.render_present renderer;
-    Thread.delay 1.0
+    Thread.delay 0.5
   done
 ;;
 

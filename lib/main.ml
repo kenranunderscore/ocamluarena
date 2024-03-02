@@ -33,7 +33,7 @@ let lua_get_color ls =
   Color.make ~red ~green ~blue
 ;;
 
-(* add some unique identifier *)
+(* TODO: maybe add some unique identifier *)
 let lua_load_player path =
   let ls = Lua.newstate () in
   Lua.openlibs ls;
@@ -74,7 +74,14 @@ let create_lua_api player_state =
 
 let load_player path =
   let player, lua_state = lua_load_player ("players/" ^ path) in
-  let player_state = ref { player; pos = { x = 100; y = 50 }; lua_state } in
+  let pos =
+    (* workaround *)
+    match path with
+    | "lloyd.lua" -> { x = 100; y = 50 }
+    | "cole.lua" -> { x = 400; y = 450 }
+    | _ -> { x = 0; y = 0 }
+  in
+  let player_state = ref { player; pos; lua_state } in
   create_lua_api player_state;
   player_state
 ;;
@@ -84,6 +91,18 @@ let draw_player renderer player =
   let color = player.player.color in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
   Sdl.render_fill_rect renderer rect
+;;
+
+let run_tick game_state tick =
+  [ !(game_state.player1); !(game_state.player2) ]
+  |> List.iter (fun ps ->
+    Printf.printf "  asking player: %s\n%!" ps.player.name;
+    Lua.getfield ps.lua_state 1 "on_tick";
+    if Lua.isnil ps.lua_state (-1)
+    then Lua.pop ps.lua_state 1
+    else (
+      Lua.pushinteger ps.lua_state !tick;
+      Lua.call ps.lua_state 1 0))
 ;;
 
 let main_loop renderer game_state =
@@ -101,20 +120,13 @@ let main_loop renderer game_state =
          | _ -> ())
       | _ -> ()
     done;
-    [ !(game_state.player1); !(game_state.player2) ]
-    |> List.iter (fun ps ->
-      Printf.printf "  asking player: %s\n%!" ps.player.name;
-      Lua.getfield ps.lua_state 1 "on_tick";
-      if Lua.isnil ps.lua_state (-1)
-      then Lua.pop ps.lua_state 1
-      else (
-        Lua.pushinteger ps.lua_state !tick;
-        Lua.call ps.lua_state 1 0));
+    run_tick game_state tick;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     !(game_state.player1) |> draw_player renderer;
     !(game_state.player2) |> draw_player renderer;
-    Sdl.render_present renderer
+    Sdl.render_present renderer;
+    Thread.delay 1.0
   done
 ;;
 

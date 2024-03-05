@@ -16,11 +16,19 @@ type player_command =
   | Turn_right of float
 [@@deriving show]
 
+type player_intent =
+  { distance : float
+  ; angle : float
+  }
+
+let default_intent = { distance = 0.0; angle = 0.0 }
+
 type player_state =
   { player : player
   ; lua_state : Lua.state
   ; pos : position
   ; commands : player_command list
+  ; intent : player_intent
   }
 
 type game_state =
@@ -94,7 +102,9 @@ let load_player path =
     | "cole.lua" -> { x = 400; y = 450 }
     | _ -> { x = 0; y = 0 }
   in
-  let player_state = ref { player; pos; lua_state; commands = [] } in
+  let player_state =
+    ref { player; pos; lua_state; commands = []; intent = default_intent }
+  in
   create_lua_api player_state;
   player_state
 ;;
@@ -106,40 +116,40 @@ let draw_player renderer player =
   Sdl.render_fill_rect renderer rect
 ;;
 
+(* TODO: implement: take the 'latest' command of each type *)
+(* TODO: maybe partition here as well? *)
+(* TODO: or return new intent immediately, then replace current one? *)
+let reduce_commands commands = commands
+
 let run_tick game_state tick =
-  let [ [ cmd ]; _ ] =
-    [ !(game_state.player1); !(game_state.player2) ]
-    |> List.map (fun ps ->
-      Printf.printf "  asking player: %s\n%!" ps.player.name;
-      let ls = ps.lua_state in
-      Lua.getfield ls 1 "on_tick";
-      if Lua.isnil ls (-1)
+  let current_tick = !tick in
+  [ game_state.player1; game_state.player2 ]
+  |> List.iter (fun psref ->
+    let ps = !psref in
+    Printf.printf "  asking player: %s\n%!" ps.player.name;
+    let ls = ps.lua_state in
+    Lua.getfield ls 1 "on_tick";
+    if Lua.isnil ls (-1)
+    then Lua.pop ls 1
+    else (
+      Lua.pushinteger ls current_tick;
+      Lua.call ls 1 1;
+      if Lua.istable ls (-1)
       then (
-        Lua.pop ls 1;
-        [])
-      else (
-        Lua.pushinteger ps.lua_state !tick;
-        Lua.call ls 1 1;
-        if Lua.istable ls (-1)
-        then (
-          let size = Lua.objlen ls (-1) in
-          Lua.pushinteger ls 1;
-          Lua.gettable ls (-2);
-          let cmds =
-            match Lua.touserdata ls (-1) with
-            | Some (`Userdata cmd) ->
-              let commands = [ cmd ] in
-              commands
-            | _ -> []
-          in
-          Lua.pop ls 2;
-          cmds)
-        else failwith "expected table to be returned"))
-  in
-  let s = !(game_state.player1) in
-  Printf.printf "commands size: %i\n%!" (List.length s.commands);
-  print_endline (show_player_command cmd);
-  game_state.player1 := { s with commands = [ cmd ] }
+        let size = Lua.objlen ls (-1) in
+        Lua.pushinteger ls 1;
+        Lua.gettable ls (-2);
+        let cmds =
+          match Lua.touserdata ls (-1) with
+          | Some (`Userdata cmd) ->
+            let commands = [ cmd ] in
+            commands
+          | _ -> []
+        in
+        Lua.pop ls 2;
+        let resulting_cmds = reduce_commands cmds in
+        let intent = { distance = 1.0; angle = 0.0 } in
+        psref := { ps with commands = []; intent })))
 ;;
 
 let main_loop renderer game_state =
@@ -157,6 +167,9 @@ let main_loop renderer game_state =
          | _ -> ())
       | _ -> ()
     done;
+    Printf.printf
+      "  number of commands: %i\n%!"
+      (List.length !(game_state.player1).commands);
     run_tick game_state tick;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;

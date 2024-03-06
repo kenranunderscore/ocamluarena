@@ -1,7 +1,7 @@
 let failwithf f = Printf.ksprintf failwith f
 let arena_width = 1000
 let arena_height = 800
-let player_diameter = 50
+let player_diameter = 50.
 
 module Player = struct
   type t =
@@ -16,8 +16,8 @@ module Player = struct
 end
 
 type position =
-  { x : int
-  ; y : int
+  { x : float
+  ; y : float
   }
 
 type player_command =
@@ -85,11 +85,11 @@ let create_lua_api player_state =
     "me"
     [ ( "x"
       , fun l ->
-          Lua.pushinteger l !player_state.pos.x;
+          Lua.pushnumber l !player_state.pos.x;
           1 )
     ; ( "y"
       , fun l ->
-          Lua.pushinteger l !player_state.pos.y;
+          Lua.pushnumber l !player_state.pos.y;
           1 )
     ; ( "move"
       , fun l ->
@@ -105,9 +105,9 @@ let load_player path =
   let pos =
     (* workaround *)
     match path with
-    | "lloyd.lua" -> { x = 100; y = 50 }
-    | "cole.lua" -> { x = 200; y = 50 }
-    | _ -> { x = 0; y = 0 }
+    | "lloyd.lua" -> { x = 100.; y = 50. }
+    | "cole.lua" -> { x = 200.; y = 50. }
+    | _ -> { x = 0.; y = 0. }
   in
   let player_state = ref { pos; lua_state; commands = []; intent = default_intent } in
   create_lua_api player_state;
@@ -115,8 +115,8 @@ let load_player path =
 ;;
 
 let draw_player renderer player player_state =
-  let x = player_state.pos.x - (player_diameter / 2) in
-  let y = player_state.pos.y - (player_diameter / 2) in
+  let x = player_state.pos.x -. (player_diameter /. 2.) |> Int.of_float in
+  let y = player_state.pos.y -. (player_diameter /. 2.) |> Int.of_float in
   let rect = Sdl.Rect.create ~x ~y ~w:50 ~h:50 in
   let color = Player.color player in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
@@ -161,7 +161,7 @@ let calculate_new_pos old_pos intent =
     (* TODO: fix direction *)
     let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
     let remaining_intent = { intent with distance = intent.distance -. delta } in
-    let target_position = { old_pos with x = old_pos.x + Int.of_float delta } in
+    let target_position = { old_pos with x = old_pos.x +. delta } in
     Some { remaining_intent; target_position })
   else None
 ;;
@@ -176,17 +176,15 @@ let determine_intent old_intent cmds =
 
 let is_valid_position { x; y } _game_state =
   (* also check game state wrt. player positions *)
-  let r = player_diameter / 2 in
-  x - r >= 0 && x + r <= arena_width && y - r >= 0 && y + r <= arena_height
+  let r = player_diameter /. 2. in
+  x -. r >= 0.
+  && x +. r <= Float.of_int arena_width
+  && y -. r >= 0.
+  && y +. r <= Float.of_int arena_height
 ;;
 
-let dist p1 p2 =
-  sqrt
-    (Float.pow (Float.of_int p1.x -. Float.of_int p2.x) 2.
-     +. Float.pow (Float.of_int p1.y -. Float.of_int p2.y) 2.)
-;;
-
-let players_collide pos1 pos2 = dist pos1 pos2 <= Float.of_int player_diameter
+let dist p1 p2 = sqrt (Float.pow (p1.x -. p2.x) 2. +. Float.pow (p1.y -. p2.y) 2.)
+let players_collide pos1 pos2 = dist pos1 pos2 <= player_diameter
 
 let find_colliding_players positions =
   let rec go (_player, movement_change) to_check acc =

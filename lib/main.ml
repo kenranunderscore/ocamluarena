@@ -7,6 +7,8 @@ module Player = struct
     }
 
   let make ~name ~color = { name; color }
+  let name { name; _ } = name
+  let color { color; _ } = color
   let compare p1 p2 = compare p1.name p2.name
 end
 
@@ -15,7 +17,6 @@ type position =
   ; y : int
   }
 
-(* TODO: can we use userdata here? *)
 type player_command =
   | Move of float
   | Turn_right of float
@@ -35,9 +36,9 @@ type player_state =
   ; intent : player_intent
   }
 
-module PlayerStatesMap = Map.Make (Player)
+module PlayerStates = Map.Make (Player)
 
-type game_state = { player_states : player_state ref PlayerStatesMap.t }
+type game_state = { player_states : player_state ref PlayerStates.t }
 
 let lua_get_color ls =
   Lua.getfield ls (-1) "color";
@@ -110,47 +111,61 @@ let load_player path =
   player, player_state
 ;;
 
-let draw_player renderer (player : Player.t) player_state =
+let draw_player renderer player player_state =
   let rect = Sdl.Rect.create ~x:player_state.pos.x ~y:player_state.pos.y ~w:50 ~h:50 in
-  let color = player.color in
+  let color = Player.color player in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
   Sdl.render_fill_rect renderer rect
 ;;
 
-(* TODO: implement: take the 'latest' command of each type *)
-(* TODO: maybe partition here as well? *)
-(* TODO: or return new intent immediately, then replace current one? *)
+(* TODO: implement: take the 'latest' (according to event order?) command of
+   each type *)
 let reduce_commands commands = commands
 
+let call_on_tick_event ls tick =
+  Lua.getfield ls 1 "on_tick";
+  if Lua.isnil ls (-1)
+  then (
+    Lua.pop ls 1;
+    [])
+  else (
+    Lua.pushinteger ls tick;
+    Lua.call ls 1 1;
+    if Lua.istable ls (-1)
+    then (
+      (* TODO: read all the commands *)
+      let _size = Lua.objlen ls (-1) in
+      Lua.pushinteger ls 1;
+      Lua.gettable ls (-2);
+      match Lua.touserdata ls (-1) with
+      | Some (`Userdata cmd) ->
+        let commands = [ cmd ] in
+        commands
+      | _ -> [])
+    else [])
+;;
+
+let calculate_new_pos old_pos _intent =
+  (* TODO: implement *)
+  old_pos
+;;
+
+let determine_intent old_intent _cmds =
+  (* TODO: implement *)
+  old_intent
+;;
+
 let run_tick game_state tick =
-  let current_tick = !tick in
   game_state.player_states
-  |> PlayerStatesMap.iter (fun player state ->
-    let ps = !state in
+  |> PlayerStates.mapi (fun player state ->
     Printf.printf "  asking player: %s\n%!" player.name;
+    let ps = !state in
     let ls = ps.lua_state in
-    Lua.getfield ls 1 "on_tick";
-    if Lua.isnil ls (-1)
-    then Lua.pop ls 1
-    else (
-      Lua.pushinteger ls current_tick;
-      Lua.call ls 1 1;
-      if Lua.istable ls (-1)
-      then (
-        let size = Lua.objlen ls (-1) in
-        Lua.pushinteger ls 1;
-        Lua.gettable ls (-2);
-        let cmds =
-          match Lua.touserdata ls (-1) with
-          | Some (`Userdata cmd) ->
-            let commands = [ cmd ] in
-            commands
-          | _ -> []
-        in
-        Lua.pop ls 2;
-        let resulting_cmds = reduce_commands cmds in
-        let intent = { distance = 1.0; angle = 0.0 } in
-        state := { ps with commands = []; intent })))
+    let tick_commands = call_on_tick_event ls tick in
+    let commands = reduce_commands tick_commands in
+    let new_intent = determine_intent ps.intent commands in
+    let desired_pos = calculate_new_pos ps.pos new_intent in
+    { ps with commands }, desired_pos)
 ;;
 
 let main_loop renderer game_state =
@@ -168,11 +183,11 @@ let main_loop renderer game_state =
          | _ -> ())
       | _ -> ()
     done;
-    run_tick game_state tick;
+    ignore @@ run_tick game_state !tick;
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     game_state.player_states
-    |> PlayerStatesMap.iter (fun p state -> draw_player renderer p !state);
+    |> PlayerStates.iter (fun p state -> draw_player renderer p !state);
     Sdl.render_present renderer;
     Thread.delay 0.5
   done
@@ -180,7 +195,7 @@ let main_loop renderer game_state =
 
 let main () =
   let players = [ load_player "lloyd.lua"; load_player "cole.lua" ] in
-  let game_state = { player_states = PlayerStatesMap.of_list players } in
+  let game_state = { player_states = PlayerStates.of_list players } in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer ~w:1000 ~h:800 "Arena" (fun _window renderer ->
       main_loop renderer game_state))

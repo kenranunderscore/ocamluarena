@@ -1,6 +1,7 @@
 let failwithf f = Printf.ksprintf failwith f
 let arena_width = 1000
 let arena_height = 800
+let player_diameter = 50
 
 module Player = struct
   type t =
@@ -114,7 +115,9 @@ let load_player path =
 ;;
 
 let draw_player renderer player player_state =
-  let rect = Sdl.Rect.create ~x:player_state.pos.x ~y:player_state.pos.y ~w:50 ~h:50 in
+  let x = player_state.pos.x - (player_diameter / 2) in
+  let y = player_state.pos.y - (player_diameter / 2) in
+  let rect = Sdl.Rect.create ~x ~y ~w:50 ~h:50 in
   let color = Player.color player in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
   Sdl.render_fill_rect renderer rect
@@ -149,7 +152,7 @@ let call_on_tick_event ls tick =
 
 let calculate_new_pos old_pos { distance; _ } =
   (* reduce distance in (new) intent, fix direction *)
-  if Float.abs distance > 0.0 then Some { old_pos with x = old_pos.x + 1 } else None
+  if Float.abs distance > 0.0 then Some { old_pos with x = old_pos.x + 2 } else None
 ;;
 
 let determine_intent old_intent cmds =
@@ -159,8 +162,9 @@ let determine_intent old_intent cmds =
   | _ -> old_intent
 ;;
 
-let is_valid_position { x; y } game_state =
-  not (x < 0 || x > arena_width || y < 0 || y > arena_height)
+let is_valid_position { x; y } _game_state =
+  let r = player_diameter / 2 in
+  x - r >= 0 && x + r <= arena_width && y - r >= 0 && y + r <= arena_height
 ;;
 
 let run_tick game_state tick =

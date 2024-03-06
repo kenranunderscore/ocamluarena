@@ -39,9 +39,9 @@ type player_state =
   ; intent : player_intent
   }
 
-module PlayerStates = Map.Make (Player)
+module PlayerMap = Map.Make (Player)
 
-type game_state = { player_states : player_state ref PlayerStates.t }
+type game_state = { player_states : player_state ref PlayerMap.t }
 
 let lua_get_color ls =
   Lua.getfield ls (-1) "color";
@@ -106,7 +106,7 @@ let load_player path =
     (* workaround *)
     match path with
     | "lloyd.lua" -> { x = 100; y = 50 }
-    | "cole.lua" -> { x = 400; y = 450 }
+    | "cole.lua" -> { x = 200; y = 50 }
     | _ -> { x = 0; y = 0 }
   in
   let player_state = ref { pos; lua_state; commands = []; intent = default_intent } in
@@ -160,7 +160,7 @@ let calculate_new_pos old_pos intent =
   then (
     (* TODO: fix direction *)
     let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
-    let remaining_intent = { intent with distance = Float.sub intent.distance delta } in
+    let remaining_intent = { intent with distance = intent.distance -. delta } in
     let target_position = { old_pos with x = old_pos.x + Int.of_float delta } in
     Some { remaining_intent; target_position })
   else None
@@ -175,27 +175,73 @@ let determine_intent old_intent cmds =
 ;;
 
 let is_valid_position { x; y } _game_state =
+  (* also check game state wrt. player positions *)
   let r = player_diameter / 2 in
   x - r >= 0 && x + r <= arena_width && y - r >= 0 && y + r <= arena_height
 ;;
 
+let dist p1 p2 =
+  sqrt
+    (Float.pow (Float.of_int p1.x -. Float.of_int p2.x) 2.
+     +. Float.pow (Float.of_int p1.y -. Float.of_int p2.y) 2.)
+;;
+
+let players_collide pos1 pos2 = dist pos1 pos2 <= Float.of_int player_diameter
+
+let find_colliding_players positions =
+  let rec go (_player, movement_change) to_check acc =
+    let colliding =
+      PlayerMap.filter
+        (fun _p m -> players_collide movement_change.target_position m.target_position)
+        to_check
+    in
+    (* Printf.printf "  colliding.length == %i\n%!" (PlayerMap.cardinal colliding) *)
+    let new_acc = List.append acc (PlayerMap.bindings colliding) in
+    let remaining =
+      (* TODO: map difference utility *)
+      PlayerMap.merge
+        (fun _player l r ->
+          match l, r with
+          | Some x, None -> Some x
+          | _ -> None)
+        to_check
+        colliding
+    in
+    if PlayerMap.is_empty remaining
+    then new_acc
+    else (
+      let next = PlayerMap.choose remaining in
+      go next (PlayerMap.remove (fst next) remaining) new_acc)
+  in
+  match PlayerMap.choose_opt positions with
+  | Some first ->
+    let others = PlayerMap.remove (fst first) positions in
+    go first others []
+  | None -> []
+;;
+
 let run_tick game_state tick =
-  game_state.player_states
-  |> PlayerStates.filter_map (fun player state ->
-    Printf.printf "  asking player: %s\n%!" player.name;
-    let ps = !state in
-    let ls = ps.lua_state in
-    let tick_commands = call_on_tick_event ls tick in
-    let commands = reduce_commands tick_commands in
-    let new_intent = determine_intent ps.intent commands in
-    let desired_movement = calculate_new_pos ps.pos new_intent in
-    desired_movement |> Option.map (fun m -> state, m))
-  |> PlayerStates.filter_map (fun _player (state, movement_change) ->
-    if is_valid_position movement_change.target_position game_state
-    then Some (state, movement_change)
-    else None)
+  let moving_players =
+    game_state.player_states
+    |> PlayerMap.filter_map (fun player state ->
+      Printf.printf "  asking player: %s\n%!" player.name;
+      let ps = !state in
+      let ls = ps.lua_state in
+      let tick_commands = call_on_tick_event ls tick in
+      let commands = reduce_commands tick_commands in
+      let new_intent = determine_intent ps.intent commands in
+      (* TODO: always update intent? *)
+      let desired_movement = calculate_new_pos ps.pos new_intent in
+      desired_movement |> Option.map (fun m -> state, m))
+    |> PlayerMap.filter (fun _player (_state, movement_change) ->
+      is_valid_position movement_change.target_position game_state)
+  in
+  let collisions =
+    moving_players |> PlayerMap.mapi (fun _ (_, m) -> m) |> find_colliding_players
+  in
   (* TODO: second collision checking phase goes here *)
-  |> PlayerStates.iter (fun _player (state, movement_change) ->
+  moving_players
+  |> PlayerMap.iter (fun _player (state, movement_change) ->
     state
     := { !state with
          pos = movement_change.target_position
@@ -222,7 +268,7 @@ let main_loop renderer game_state =
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     game_state.player_states
-    |> PlayerStates.iter (fun p state -> draw_player renderer p !state);
+    |> PlayerMap.iter (fun p state -> draw_player renderer p !state);
     Sdl.render_present renderer;
     Thread.delay 0.01
   done
@@ -230,7 +276,7 @@ let main_loop renderer game_state =
 
 let main () =
   let players = [ load_player "lloyd.lua"; load_player "cole.lua" ] in
-  let game_state = { player_states = PlayerStates.of_list players } in
+  let game_state = { player_states = PlayerMap.of_list players } in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
       ~w:arena_width

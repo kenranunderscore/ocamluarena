@@ -167,10 +167,11 @@ let calculate_new_pos old_pos intent =
 ;;
 
 let determine_intent old_intent cmds =
-  match cmds with
-  | [ Move dist ] -> { old_intent with distance = dist }
-  (* TODO: implement *)
-  | _ -> old_intent
+  let apply_cmd intent = function
+    | Move dist -> { intent with distance = dist }
+    | _ -> intent (* TODO: direction + angle *)
+  in
+  List.fold_left apply_cmd old_intent cmds
 ;;
 
 let is_valid_position { x; y } _game_state =

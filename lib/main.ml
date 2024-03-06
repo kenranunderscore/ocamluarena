@@ -150,14 +150,19 @@ let call_on_tick_event ls tick =
     else [])
 ;;
 
+type movement_change =
+  { remaining_intent : player_intent
+  ; target_position : position
+  }
+
 let calculate_new_pos old_pos intent =
-  (* TODO: fix direction *)
-  let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
   if Float.abs intent.distance > 0.0
-  then
-    Some
-      ( { old_pos with x = old_pos.x + Int.of_float delta }
-      , { intent with distance = Float.sub intent.distance delta } )
+  then (
+    (* TODO: fix direction *)
+    let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
+    let remaining_intent = { intent with distance = Float.sub intent.distance delta } in
+    let target_position = { old_pos with x = old_pos.x + Int.of_float delta } in
+    Some { remaining_intent; target_position })
   else None
 ;;
 
@@ -174,38 +179,28 @@ let is_valid_position { x; y } _game_state =
 ;;
 
 let run_tick game_state tick =
-  let ps =
-    game_state.player_states
-    |> PlayerStates.mapi (fun player state ->
-      Printf.printf "  asking player: %s\n%!" player.name;
-      let ps = !state in
-      let ls = ps.lua_state in
-      let tick_commands = call_on_tick_event ls tick in
-      let commands = reduce_commands tick_commands in
-      let new_intent = determine_intent ps.intent commands in
-      let desired_movement = calculate_new_pos ps.pos new_intent in
-      state, desired_movement)
-  in
-  ps
-  |> PlayerStates.mapi (fun _player (state, movement) ->
-    match movement with
-    | None -> state, None
-    | Some (new_pos, _remaining_intent) ->
-      if is_valid_position new_pos game_state
-      then state, movement
-      else state, None (* TODO *))
-  |> PlayerStates.iter (fun _player (state, movement) ->
-    match movement with
-    | None -> ()
-    | Some (new_pos, remaining_intent) ->
-      if is_valid_position new_pos game_state
-      then (
-        print_endline "in here";
-        state := { !state with pos = new_pos; intent = remaining_intent })
-      else ())
+  game_state.player_states
+  |> PlayerStates.filter_map (fun player state ->
+    Printf.printf "  asking player: %s\n%!" player.name;
+    let ps = !state in
+    let ls = ps.lua_state in
+    let tick_commands = call_on_tick_event ls tick in
+    let commands = reduce_commands tick_commands in
+    let new_intent = determine_intent ps.intent commands in
+    let desired_movement = calculate_new_pos ps.pos new_intent in
+    desired_movement |> Option.map (fun m -> state, m))
+  |> PlayerStates.filter_map (fun _player (state, movement_change) ->
+    if is_valid_position movement_change.target_position game_state
+    then Some (state, movement_change)
+    else None)
+  (* TODO: second collision checking phase goes here *)
+  |> PlayerStates.iter (fun _player (state, movement_change) ->
+    state
+    := { !state with
+         pos = movement_change.target_position
+       ; intent = movement_change.remaining_intent
+       })
 ;;
-
-(* TODO: second collision checking phase goes here *)
 
 let main_loop renderer game_state =
   let e = Sdl.Event.create () in
@@ -228,7 +223,7 @@ let main_loop renderer game_state =
     game_state.player_states
     |> PlayerStates.iter (fun p state -> draw_player renderer p !state);
     Sdl.render_present renderer;
-    Thread.delay 0.1
+    Thread.delay 0.01
   done
 ;;
 

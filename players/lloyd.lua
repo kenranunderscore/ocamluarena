@@ -11,8 +11,16 @@ end
 
 function m.on_tick(n)
   log("got tick event: " .. n)
-  return { me.move(n) }
+  if n < 10 then
+    return { me.move(50) }
+  else
+    return {}
+  end
 end
+
+-- function m.on_kill_enemy(enemy_name)
+--    return { me.stop() }
+-- end
 
 log("reporting in")
 

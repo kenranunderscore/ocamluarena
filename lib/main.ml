@@ -150,9 +150,15 @@ let call_on_tick_event ls tick =
     else [])
 ;;
 
-let calculate_new_pos old_pos { distance; _ } =
-  (* reduce distance in (new) intent, fix direction *)
-  if Float.abs distance > 0.0 then Some { old_pos with x = old_pos.x + 2 } else None
+let calculate_new_pos old_pos intent =
+  (* TODO: fix direction *)
+  let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
+  if Float.abs intent.distance > 0.0
+  then
+    Some
+      ( { old_pos with x = old_pos.x + Int.of_float delta }
+      , { intent with distance = Float.sub intent.distance delta } )
+  else None
 ;;
 
 let determine_intent old_intent cmds =
@@ -177,23 +183,25 @@ let run_tick game_state tick =
       let tick_commands = call_on_tick_event ls tick in
       let commands = reduce_commands tick_commands in
       let new_intent = determine_intent ps.intent commands in
-      let desired_pos = calculate_new_pos ps.pos new_intent in
-      state, desired_pos)
+      let desired_movement = calculate_new_pos ps.pos new_intent in
+      state, desired_movement)
   in
   ps
-  |> PlayerStates.mapi (fun _player (state, pos) ->
-    match pos with
+  |> PlayerStates.mapi (fun _player (state, movement) ->
+    match movement with
     | None -> state, None
-    | Some new_pos ->
-      if is_valid_position new_pos game_state then state, pos else state, None (* TODO *))
-  |> PlayerStates.iter (fun _player (state, pos) ->
-    match pos with
+    | Some (new_pos, _remaining_intent) ->
+      if is_valid_position new_pos game_state
+      then state, movement
+      else state, None (* TODO *))
+  |> PlayerStates.iter (fun _player (state, movement) ->
+    match movement with
     | None -> ()
-    | Some new_pos ->
+    | Some (new_pos, remaining_intent) ->
       if is_valid_position new_pos game_state
       then (
         print_endline "in here";
-        state := { !state with pos = new_pos })
+        state := { !state with pos = new_pos; intent = remaining_intent })
       else ())
 ;;
 

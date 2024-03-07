@@ -174,26 +174,34 @@ let determine_intent old_intent cmds =
   List.fold_left apply_cmd old_intent cmds
 ;;
 
-let is_valid_position { x; y } _game_state =
-  (* also check game state wrt. player positions *)
-  let r = player_diameter /. 2. in
-  x -. r >= 0.
-  && x +. r <= Float.of_int arena_width
-  && y -. r >= 0.
-  && y +. r <= Float.of_int arena_height
-;;
-
 let dist p1 p2 = sqrt (Float.pow (p1.x -. p2.x) 2. +. Float.pow (p1.y -. p2.y) 2.)
 let players_collide pos1 pos2 = dist pos1 pos2 <= player_diameter
 
+(* TODO: only pass "obstacles" instead of whole state *)
+let is_valid_position player ({ x; y } as p) game_state =
+  let r = player_diameter /. 2. in
+  let stays_inside_arena =
+    x -. r >= 0.
+    && x +. r <= Float.of_int arena_width
+    && y -. r >= 0.
+    && y +. r <= Float.of_int arena_height
+  in
+  let would_hit_other_player =
+    game_state.player_states
+    |> PlayerMap.exists (fun player' state ->
+      player != player' && players_collide p !state.pos)
+  in
+  stays_inside_arena && not would_hit_other_player
+;;
+
 let find_colliding_players positions =
   let rec go (_player, movement_change) to_check acc =
+    (* TODO: find out who collided with whom -> event *)
     let colliding =
       PlayerMap.filter
         (fun _p m -> players_collide movement_change.target_position m.target_position)
         to_check
     in
-    (* Printf.printf "  colliding.length == %i\n%!" (PlayerMap.cardinal colliding) *)
     let new_acc = List.append acc (PlayerMap.bindings colliding) in
     let remaining =
       (* TODO: map difference utility *)
@@ -231,14 +239,15 @@ let run_tick game_state tick =
       (* TODO: always update intent? *)
       let desired_movement = calculate_new_pos ps.pos new_intent in
       desired_movement |> Option.map (fun m -> state, m))
-    |> PlayerMap.filter (fun _player (_state, movement_change) ->
-      is_valid_position movement_change.target_position game_state)
+    |> PlayerMap.filter (fun player (_state, movement_change) ->
+      is_valid_position player movement_change.target_position game_state)
   in
   let collisions =
     moving_players |> PlayerMap.mapi (fun _ (_, m) -> m) |> find_colliding_players
   in
-  (* TODO: second collision checking phase goes here *)
   moving_players
+  |> PlayerMap.filter (fun player _ ->
+    not @@ List.exists (fun (p, _) -> p == player) collisions)
   |> PlayerMap.iter (fun _player (state, movement_change) ->
     state
     := { !state with

@@ -125,19 +125,17 @@ let lua_load_lua_player path =
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
-(* TODO: don't pass state ref; just pass closures to read the values *)
-(* see below as well *)
-let create_lua_api ls player_state =
+let create_lua_api ls get_player_state =
   Lua.pushmodule
     ls
     "me"
     [ ( "x"
       , fun l ->
-          Lua.pushnumber l !player_state.pos.x;
+          Lua.pushnumber l (get_player_state ()).pos.x;
           1 )
     ; ( "y"
       , fun l ->
-          Lua.pushnumber l !player_state.pos.y;
+          Lua.pushnumber l (get_player_state ()).pos.y;
           1 )
     ; ( "move"
       , fun l ->
@@ -148,10 +146,9 @@ let create_lua_api ls player_state =
     ]
 ;;
 
-(* TODO: don't pass state ref; just pass closures to read the values *)
-let load_lua_player path player_state =
+let load_lua_player path get_player_state =
   let player, lua_state = lua_load_lua_player ("players/" ^ path) in
-  create_lua_api lua_state player_state;
+  create_lua_api lua_state get_player_state;
   let p = make_lua_player lua_state in
   player, p
 ;;
@@ -299,15 +296,14 @@ let main_loop renderer (game_state : Game_state.t) =
 ;;
 
 let main () =
-  let initial_state = Game_state.initial in
-  let lloyd_state = ref @@ make_initial_state { x = 100.; y = 50. } in
-  let lloyd_meta, lloyd_module = load_lua_player "lloyd.lua" lloyd_state in
-  let cole_state = ref @@ make_initial_state { x = 450.; y = 80. } in
-  let cole_meta, cole_module = load_lua_player "cole.lua" cole_state in
+  let state1 = ref @@ make_initial_state { x = 100.; y = 50. } in
+  let meta1, impl1 = load_lua_player "lloyd.lua" (fun () -> !state1) in
+  let state2 = ref @@ make_initial_state { x = 450.; y = 80. } in
+  let meta2, impl2 = load_lua_player "cole.lua" (fun () -> !state2) in
   let game_state =
-    initial_state
-    |> Game_state.add_player lloyd_meta lloyd_state lloyd_module
-    |> Game_state.add_player cole_meta cole_state cole_module
+    Game_state.initial
+    |> Game_state.add_player meta1 state1 impl1
+    |> Game_state.add_player meta2 state2 impl2
   in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer

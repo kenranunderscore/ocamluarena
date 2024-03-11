@@ -75,8 +75,15 @@ let make_initial_state pos = { pos; intent = default_intent }
 
 module PlayerMap = Map.Make (Player)
 
-(* TODO: add type for map values. player_data? *)
-type game_state = { players : (player_state ref * (module PLAYER)) PlayerMap.t }
+module Game_state = struct
+  type t = { players : (player_state ref * (module PLAYER)) PlayerMap.t }
+
+  let initial = { players = PlayerMap.empty }
+
+  let add_player meta data game_state =
+    { players = PlayerMap.add meta data game_state.players }
+  ;;
+end
 
 let lua_get_color ls =
   Lua.getfield ls (-1) "color";
@@ -185,7 +192,7 @@ let dist p1 p2 = sqrt (Float.pow (p1.x -. p2.x) 2. +. Float.pow (p1.y -. p2.y) 2
 let players_collide pos1 pos2 = dist pos1 pos2 <= player_diameter
 
 (* TODO: only pass "obstacles" instead of whole state *)
-let is_valid_position player ({ x; y } as p) game_state =
+let is_valid_position player ({ x; y } as p) (game_state : Game_state.t) =
   let r = player_diameter /. 2. in
   let stays_inside_arena =
     x -. r >= 0.
@@ -262,7 +269,7 @@ let run_tick game_state tick =
        })
 ;;
 
-let main_loop renderer game_state =
+let main_loop renderer (game_state : Game_state.t) =
   let e = Sdl.Event.create () in
   let quit = ref false in
   let tick = ref 0 in
@@ -288,15 +295,16 @@ let main_loop renderer game_state =
 ;;
 
 let main () =
+  let initial_state = Game_state.initial in
   let lloyd_state = ref @@ make_initial_state { x = 100.; y = 50. } in
   let lloyd_meta, lloyd_module = load_lua_player "lloyd.lua" lloyd_state in
   let cole_state = ref @@ make_initial_state { x = 450.; y = 80. } in
   let cole_meta, cole_module = load_lua_player "cole.lua" cole_state in
-  let players =
-    PlayerMap.of_list
-      [ lloyd_meta, (lloyd_state, lloyd_module); cole_meta, (cole_state, cole_module) ]
+  let game_state =
+    initial_state
+    |> Game_state.add_player lloyd_meta (lloyd_state, lloyd_module)
+    |> Game_state.add_player cole_meta (cole_state, cole_module)
   in
-  let game_state = { players } in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
       ~w:arena_width

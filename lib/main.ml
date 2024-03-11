@@ -12,19 +12,6 @@ module type PLAYER = sig
   val on_tick : int -> player_command list
 end
 
-(* TODO: rename *)
-module Player = struct
-  type t =
-    { name : string
-    ; color : Color.t
-    }
-
-  let make ~name ~color = { name; color }
-  let name { name; _ } = name
-  let color { color; _ } = color
-  let compare p1 p2 = compare p1.name p2.name
-end
-
 let lua_call_on_tick_event ls tick =
   Lua.getfield ls 1 "on_tick";
   if Lua.isnil ls (-1)
@@ -73,15 +60,34 @@ type player_state =
 
 let make_initial_state pos = { pos; intent = default_intent }
 
-module PlayerMap = Map.Make (Player)
+module Player_id = struct
+  type t = int
+
+  let compare (p1 : t) p2 = compare p1 p2
+end
+
+module PlayerMap = Map.Make (Player_id)
+
+type player_meta =
+  { name : string
+  ; color : Color.t
+  }
+
+type player_data =
+  { state : player_state ref
+  ; impl : (module PLAYER)
+  ; meta : player_meta
+  }
 
 module Game_state = struct
-  type t = { players : (player_state ref * (module PLAYER)) PlayerMap.t }
+  type t = { players : player_data PlayerMap.t }
 
   let initial = { players = PlayerMap.empty }
 
-  let add_player meta data game_state =
-    { players = PlayerMap.add meta data game_state.players }
+  let add_player meta state impl game_state =
+    let data = { meta; state; impl } in
+    let new_id = 1 + (PlayerMap.bindings game_state.players |> List.length) in
+    { players = PlayerMap.add new_id data game_state.players }
   ;;
 end
 
@@ -97,7 +103,6 @@ let lua_get_color ls =
   Color.make ~red ~green ~blue
 ;;
 
-(* TODO: maybe add some unique identifier *)
 let lua_load_lua_player path =
   let ls = Lua.newstate () in
   Lua.openlibs ls;
@@ -115,8 +120,8 @@ let lua_load_lua_player path =
       let color = lua_get_color ls in
       (* pop the 'meta' table *)
       Lua.pop ls 1;
-      let player = Player.make ~name ~color in
-      player, ls)
+      let meta = { name; color } in
+      meta, ls)
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
@@ -155,7 +160,7 @@ let draw_player renderer player player_state =
   let x = player_state.pos.x -. (player_diameter /. 2.) |> Int.of_float in
   let y = player_state.pos.y -. (player_diameter /. 2.) |> Int.of_float in
   let rect = Sdl.Rect.create ~x ~y ~w:50 ~h:50 in
-  let color = Player.color player in
+  let { color; _ } = player in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
   Sdl.render_fill_rect renderer rect
 ;;
@@ -192,7 +197,7 @@ let dist p1 p2 = sqrt (Float.pow (p1.x -. p2.x) 2. +. Float.pow (p1.y -. p2.y) 2
 let players_collide pos1 pos2 = dist pos1 pos2 <= player_diameter
 
 (* TODO: only pass "obstacles" instead of whole state *)
-let is_valid_position player ({ x; y } as p) (game_state : Game_state.t) =
+let is_valid_position player_id ({ x; y } as p) (game_state : Game_state.t) =
   let r = player_diameter /. 2. in
   let stays_inside_arena =
     x -. r >= 0.
@@ -202,8 +207,8 @@ let is_valid_position player ({ x; y } as p) (game_state : Game_state.t) =
   in
   let would_hit_other_player =
     game_state.players
-    |> PlayerMap.exists (fun player' (state, _impl) ->
-      player != player' && players_collide p !state.pos)
+    |> PlayerMap.exists (fun id { state; _ } ->
+      player_id != id && players_collide p !state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;
@@ -243,8 +248,8 @@ let find_colliding_players positions =
 let run_tick game_state tick =
   let moving_players =
     game_state.players
-    |> PlayerMap.filter_map (fun player (state, impl) ->
-      Printf.printf "  asking player: %s\n%!" player.name;
+    |> PlayerMap.filter_map (fun _id { state; impl; meta } ->
+      Printf.printf "  asking player: %s\n%!" meta.name;
       let ps = !state in
       let module M = (val impl : PLAYER) in
       let tick_commands = M.on_tick tick in
@@ -253,16 +258,15 @@ let run_tick game_state tick =
       (* TODO: always update intent? *)
       let desired_movement = calculate_new_pos ps.pos new_intent in
       desired_movement |> Option.map (fun m -> state, m))
-    |> PlayerMap.filter (fun player (_state, movement_change) ->
-      is_valid_position player movement_change.target_position game_state)
+    |> PlayerMap.filter (fun id (_state, movement_change) ->
+      is_valid_position id movement_change.target_position game_state)
   in
   let collisions =
     moving_players |> PlayerMap.mapi (fun _ (_, m) -> m) |> find_colliding_players
   in
   moving_players
-  |> PlayerMap.filter (fun player _ ->
-    not @@ List.exists (fun (p, _) -> p == player) collisions)
-  |> PlayerMap.iter (fun _player (state, movement_change) ->
+  |> PlayerMap.filter (fun id _ -> not @@ List.exists (fun (p, _) -> p == id) collisions)
+  |> PlayerMap.iter (fun _id (state, movement_change) ->
     state
     := { pos = movement_change.target_position
        ; intent = movement_change.remaining_intent
@@ -288,7 +292,7 @@ let main_loop renderer (game_state : Game_state.t) =
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     game_state.players
-    |> PlayerMap.iter (fun p (state, _impl) -> draw_player renderer p !state);
+    |> PlayerMap.iter (fun _id { state; meta; _ } -> draw_player renderer meta !state);
     Sdl.render_present renderer;
     Thread.delay 0.01
   done
@@ -302,8 +306,8 @@ let main () =
   let cole_meta, cole_module = load_lua_player "cole.lua" cole_state in
   let game_state =
     initial_state
-    |> Game_state.add_player lloyd_meta (lloyd_state, lloyd_module)
-    |> Game_state.add_player cole_meta (cole_state, cole_module)
+    |> Game_state.add_player lloyd_meta lloyd_state lloyd_module
+    |> Game_state.add_player cole_meta cole_state cole_module
   in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer

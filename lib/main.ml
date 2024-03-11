@@ -186,9 +186,9 @@ let main_loop renderer (game_state : Game_state.t) =
 
 let main () =
   let state1 = ref @@ make_initial_state { x = 100.; y = 50. } in
-  let impl1 = Player.load_lua_player "lloyd.lua" (fun () -> !state1.pos) in
+  let impl1 = Player.Lua.load "lloyd.lua" (fun () -> !state1.pos) in
   let state2 = ref @@ make_initial_state { x = 450.; y = 80. } in
-  let impl2 = Player.load_lua_player "cole.lua" (fun () -> !state2.pos) in
+  let impl2 = Player.Lua.load "cole.lua" (fun () -> !state2.pos) in
   let game_state =
     Game_state.initial
     |> Game_state.add_player state1 impl1

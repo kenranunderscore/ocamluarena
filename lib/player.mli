@@ -20,4 +20,6 @@ module type PLAYER = sig
   val on_tick : int -> command list
 end
 
-val load_lua_player : string -> (unit -> Point.t) -> (module PLAYER)
+module Lua : sig
+  val load : string -> (unit -> Point.t) -> (module PLAYER)
+end

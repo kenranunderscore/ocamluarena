@@ -68,11 +68,10 @@ let default_intent = { distance = 0.0; angle = 0.0 }
 
 type player_state =
   { pos : position
-  ; commands : player_command list
   ; intent : player_intent
   }
 
-let make_initial_state pos = { pos; commands = []; intent = default_intent }
+let make_initial_state pos = { pos; intent = default_intent }
 
 module PlayerMap = Map.Make (Player)
 
@@ -114,6 +113,8 @@ let lua_load_lua_player path =
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
+(* TODO: don't pass state ref; just pass closures to read the values *)
+(* see below as well *)
 let create_lua_api ls player_state =
   Lua.pushmodule
     ls
@@ -135,10 +136,11 @@ let create_lua_api ls player_state =
     ]
 ;;
 
+(* TODO: don't pass state ref; just pass closures to read the values *)
 let load_lua_player path player_state =
   let player, lua_state = lua_load_lua_player ("players/" ^ path) in
-  let p = make_lua_player lua_state in
   create_lua_api lua_state player_state;
+  let p = make_lua_player lua_state in
   player, p
 ;;
 
@@ -255,8 +257,7 @@ let run_tick game_state tick =
     not @@ List.exists (fun (p, _) -> p == player) collisions)
   |> PlayerMap.iter (fun _player (state, movement_change) ->
     state
-    := { !state with
-         pos = movement_change.target_position
+    := { pos = movement_change.target_position
        ; intent = movement_change.remaining_intent
        })
 ;;

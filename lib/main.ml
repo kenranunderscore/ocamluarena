@@ -8,7 +8,6 @@ module Player_map = Map.Make (Player.Id)
 type player_data =
   { state : Player.state ref
   ; impl : (module Player.PLAYER)
-  ; meta : Player.meta
   }
 
 module Game_state = struct
@@ -16,8 +15,8 @@ module Game_state = struct
 
   let initial = { players = Player_map.empty }
 
-  let add_player meta state impl game_state =
-    let data = { meta; state; impl } in
+  let add_player state impl game_state =
+    let data = { state; impl } in
     let new_id = 1 + (Player_map.bindings game_state.players |> List.length) in
     { players = Player_map.add new_id data game_state.players }
   ;;
@@ -118,9 +117,9 @@ let find_colliding_players positions =
 let run_tick game_state tick =
   let moving_players =
     game_state.players
-    |> Player_map.filter_map (fun _id { state; impl; meta } ->
-      Printf.printf "  asking player: %s\n%!" meta.name;
+    |> Player_map.filter_map (fun _id { state; impl } ->
       let module M = (val impl : Player.PLAYER) in
+      Printf.printf "  asking player: %s\n%!" M.meta.name;
       let tick_commands = M.on_tick tick in
       let commands = reduce_commands tick_commands in
       let ps = !state in
@@ -162,7 +161,9 @@ let main_loop renderer (game_state : Game_state.t) =
     Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
     Sdl.render_clear renderer;
     game_state.players
-    |> Player_map.iter (fun _id { state; meta; _ } -> draw_player renderer meta !state);
+    |> Player_map.iter (fun _id { state; impl } ->
+      let module M = (val impl : Player.PLAYER) in
+      draw_player renderer M.meta !state);
     Sdl.render_present renderer;
     Thread.delay 0.01
   done
@@ -170,13 +171,13 @@ let main_loop renderer (game_state : Game_state.t) =
 
 let main () =
   let state1 = ref @@ Player.make_initial_state { x = 100.; y = 50. } in
-  let meta1, impl1 = Player.load_lua_player "lloyd.lua" (fun () -> !state1) in
+  let impl1 = Player.load_lua_player "lloyd.lua" (fun () -> !state1) in
   let state2 = ref @@ Player.make_initial_state { x = 450.; y = 80. } in
-  let meta2, impl2 = Player.load_lua_player "cole.lua" (fun () -> !state2) in
+  let impl2 = Player.load_lua_player "cole.lua" (fun () -> !state2) in
   let game_state =
     Game_state.initial
-    |> Game_state.add_player meta1 state1 impl1
-    |> Game_state.add_player meta2 state2 impl2
+    |> Game_state.add_player state1 impl1
+    |> Game_state.add_player state2 impl2
   in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer

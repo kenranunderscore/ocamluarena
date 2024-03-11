@@ -32,6 +32,7 @@ module Id = struct
 end
 
 module type PLAYER = sig
+  val meta : meta
   val on_tick : int -> command list
 end
 
@@ -58,8 +59,9 @@ let lua_call_on_tick_event ls tick =
     else [])
 ;;
 
-let make_lua_player ls : (module PLAYER) =
+let make_lua_player ls meta : (module PLAYER) =
   (module struct
+    let meta = meta
     let on_tick tick = lua_call_on_tick_event ls tick
   end)
 ;;
@@ -120,8 +122,8 @@ let create_lua_api ls get_player_state =
 ;;
 
 let load_lua_player path get_player_state =
-  let player, lua_state = lua_load_player_from_file ("players/" ^ path) in
+  let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
   create_lua_api lua_state get_player_state;
-  let p = make_lua_player lua_state in
-  player, p
+  let impl = make_lua_player lua_state meta in
+  impl
 ;;

@@ -5,8 +5,23 @@ let player_diameter = 50.
 
 module Player_map = Map.Make (Player.Id)
 
+type intent =
+  { distance : float
+  ; angle : float
+  }
+
+let default_intent = { distance = 0.0; angle = 0.0 }
+
+type player_state =
+  { pos : Point.t
+  ; intent : intent
+  }
+
+let make_state ~pos ~intent = { pos; intent }
+let make_initial_state pos = { pos; intent = default_intent }
+
 type player_data =
-  { state : Player.state ref
+  { state : player_state ref
   ; impl : (module Player.PLAYER)
   }
 
@@ -18,11 +33,11 @@ module Game_state = struct
   let add_player state impl game_state =
     let data = { state; impl } in
     let new_id = 1 + (Player_map.bindings game_state.players |> List.length) in
-    { players = Player_map.add new_id data game_state.players }
+    { players = Player_map.add (Player.Id.make new_id) data game_state.players }
   ;;
 end
 
-let draw_player renderer (meta : Player.meta) (player_state : Player.state) =
+let draw_player renderer (meta : Player.meta) (player_state : player_state) =
   let x = player_state.pos.x -. (player_diameter /. 2.) |> Int.of_float in
   let y = player_state.pos.y -. (player_diameter /. 2.) |> Int.of_float in
   let rect = Sdl.Rect.create ~x ~y ~w:50 ~h:50 in
@@ -36,11 +51,11 @@ let draw_player renderer (meta : Player.meta) (player_state : Player.state) =
 let reduce_commands commands = commands
 
 type movement_change =
-  { remaining_intent : Player.intent
+  { remaining_intent : intent
   ; target_position : Point.t
   }
 
-let calculate_new_pos (old_pos : Point.t) (intent : Player.intent) =
+let calculate_new_pos (old_pos : Point.t) intent =
   if Float.abs intent.distance > 0.0
   then (
     (* TODO: fix direction *)
@@ -51,8 +66,8 @@ let calculate_new_pos (old_pos : Point.t) (intent : Player.intent) =
   else None
 ;;
 
-let determine_intent (old_intent : Player.intent) cmds =
-  let apply_cmd (intent : Player.intent) = function
+let determine_intent old_intent cmds =
+  let apply_cmd intent = function
     | Player.Move dist -> { intent with distance = dist }
     | _ -> intent (* TODO: direction + angle *)
   in
@@ -137,7 +152,7 @@ let run_tick game_state tick =
   |> Player_map.filter (fun id _ -> not @@ List.exists (fun (p, _) -> p == id) collisions)
   |> Player_map.iter (fun _id (state, movement_change) ->
     state
-    := Player.make_state
+    := make_state
          ~pos:movement_change.target_position
          ~intent:movement_change.remaining_intent)
 ;;
@@ -170,10 +185,10 @@ let main_loop renderer (game_state : Game_state.t) =
 ;;
 
 let main () =
-  let state1 = ref @@ Player.make_initial_state { x = 100.; y = 50. } in
-  let impl1 = Player.load_lua_player "lloyd.lua" (fun () -> !state1) in
-  let state2 = ref @@ Player.make_initial_state { x = 450.; y = 80. } in
-  let impl2 = Player.load_lua_player "cole.lua" (fun () -> !state2) in
+  let state1 = ref @@ make_initial_state { x = 100.; y = 50. } in
+  let impl1 = Player.load_lua_player "lloyd.lua" (fun () -> !state1.pos) in
+  let state2 = ref @@ make_initial_state { x = 450.; y = 80. } in
+  let impl2 = Player.load_lua_player "cole.lua" (fun () -> !state2.pos) in
   let game_state =
     Game_state.initial
     |> Game_state.add_player state1 impl1

@@ -10,24 +10,10 @@ type command =
   | Turn_right of float
 [@@deriving show]
 
-type intent =
-  { distance : float
-  ; angle : float
-  }
-
-let default_intent = { distance = 0.0; angle = 0.0 }
-
-type state =
-  { pos : Point.t
-  ; intent : intent
-  }
-
-let make_state ~pos ~intent = { pos; intent }
-let make_initial_state pos = { pos; intent = default_intent }
-
 module Id = struct
   type t = int
 
+  let make n = n
   let compare (p1 : t) p2 = compare p1 p2
 end
 
@@ -100,17 +86,17 @@ let lua_load_player_from_file path =
   else failwithf "player could not be loaded: '%s'\n%!" path
 ;;
 
-let create_lua_api ls get_player_state =
+let create_lua_api ls (get_pos : unit -> Point.t) =
   Lua.pushmodule
     ls
     "me"
     [ ( "x"
       , fun l ->
-          Lua.pushnumber l (get_player_state ()).pos.x;
+          Lua.pushnumber l (get_pos ()).x;
           1 )
     ; ( "y"
       , fun l ->
-          Lua.pushnumber l (get_player_state ()).pos.y;
+          Lua.pushnumber l (get_pos ()).y;
           1 )
     ; ( "move"
       , fun l ->
@@ -121,9 +107,9 @@ let create_lua_api ls get_player_state =
     ]
 ;;
 
-let load_lua_player path get_player_state =
+let load_lua_player path (get_pos : unit -> Point.t) =
   let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
-  create_lua_api lua_state get_player_state;
+  create_lua_api lua_state get_pos;
   let impl = make_lua_player lua_state meta in
   impl
 ;;

@@ -38,13 +38,10 @@ module Game_state = struct
   ;;
 end
 
-let draw_player renderer (meta : Player.meta) (player_state : player_state) =
-  let x = player_state.pos.x -. (player_diameter /. 2.) |> Int.of_float in
-  let y = player_state.pos.y -. (player_diameter /. 2.) |> Int.of_float in
-  let rect = Sdl.Rect.create ~x ~y ~w:50 ~h:50 in
+let draw_player renderer (meta : Player.meta) player_state =
   let color = meta.color in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
-  Sdl.render_fill_rect renderer rect
+  Sdl.draw_circle renderer player_state.pos.x player_state.pos.y (player_diameter /. 2.)
 ;;
 
 (* TODO: implement: take the 'latest' (according to event order?) command of

@@ -56,4 +56,36 @@ let[@inline] render_fill_rect renderer rect =
   Tsdl.Sdl.render_fill_rect renderer (Some rect) |> unwrap_sdl
 ;;
 
+let[@inline] render_draw_point renderer ~x ~y =
+  Tsdl.Sdl.render_draw_point_f renderer x y |> unwrap_sdl
+;;
+
 let[@inline] render_present renderer = Tsdl.Sdl.render_present renderer
+
+let draw_circle renderer px py radius =
+  let diameter = radius *. 2. in
+  let x = ref (radius -. 1.) in
+  let y = ref 0. in
+  let tx = ref 1. in
+  let ty = ref 1. in
+  let terror = ref (!tx -. diameter) in
+  while x >= y do
+    render_draw_point renderer ~x:(px +. !x) ~y:(py -. !y);
+    render_draw_point renderer ~x:(px +. !x) ~y:(py +. !y);
+    render_draw_point renderer ~x:(px -. !x) ~y:(py -. !y);
+    render_draw_point renderer ~x:(px -. !x) ~y:(py +. !y);
+    render_draw_point renderer ~x:(px +. !y) ~y:(py -. !x);
+    render_draw_point renderer ~x:(px +. !y) ~y:(py +. !x);
+    render_draw_point renderer ~x:(px -. !y) ~y:(py -. !x);
+    render_draw_point renderer ~x:(px -. !y) ~y:(py +. !x);
+    if !terror <= 0.
+    then (
+      y := !y +. 1.;
+      terror := !terror +. !ty;
+      ty := !ty +. 2.)
+    else (
+      x := !x -. 1.;
+      tx := !tx +. 2.;
+      terror := !terror +. !tx -. diameter)
+  done
+;;

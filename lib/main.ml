@@ -2,6 +2,7 @@ let failwithf f = Printf.ksprintf failwith f
 let arena_width = 1000
 let arena_height = 800
 let player_diameter = 50.
+let player_radius = player_diameter /. 2.
 
 module Player_map = Map.Make (Player.Id)
 
@@ -40,8 +41,16 @@ end
 
 let draw_player renderer (meta : Player.meta) player_state =
   let color = meta.color in
+  let p = player_state.pos in
   Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
-  Sdl.draw_circle renderer player_state.pos.x player_state.pos.y (player_diameter /. 2.)
+  Sdl.draw_circle renderer p player_radius;
+  (* draw heading *)
+  let len = player_radius +. 10. in
+  let x = p.x +. (len *. Float.sin player_state.heading) in
+  let y = p.y -. (len *. Float.cos player_state.heading) in
+  let dest = Point.make ~x ~y in
+  Sdl.set_render_draw_color renderer ~r:10 ~g:250 ~b:50;
+  Sdl.draw_line renderer p dest
 ;;
 
 (* TODO: implement: take the 'latest' (according to event order?) command of

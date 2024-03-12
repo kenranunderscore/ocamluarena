@@ -62,7 +62,8 @@ let[@inline] render_draw_point renderer ~x ~y =
 
 let[@inline] render_present renderer = Tsdl.Sdl.render_present renderer
 
-let draw_circle renderer px py radius =
+let draw_circle renderer (p : Point.t) radius =
+  let px, py = p.x, p.y in
   let diameter = radius *. 2. in
   let x = ref (radius -. 1.) in
   let y = ref 0. in
@@ -88,4 +89,8 @@ let draw_circle renderer px py radius =
       tx := !tx +. 2.;
       terror := !terror +. !tx -. diameter)
   done
+;;
+
+let[@inline] draw_line renderer (p : Point.t) (q : Point.t) =
+  Tsdl.Sdl.render_draw_line_f renderer p.x p.y q.x q.y |> unwrap_sdl
 ;;

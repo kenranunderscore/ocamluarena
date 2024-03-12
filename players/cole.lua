@@ -3,7 +3,7 @@ local m = {}
 -- TODO: instead of a module with the 'meta' attribute, we could have a function
 -- 'register' that would return the whole bot, that is, including event
 -- handlers?
-m.meta = { name = "Cole", color = { red = 10, green = 130, blue = 170 } }
+m.meta = { name = "Cole", color = { red = 50, green = 50, blue = 50 } }
 
 function log(msg)
   print("[" .. m.meta.name .. "] " .. msg)

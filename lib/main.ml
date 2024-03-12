@@ -67,7 +67,8 @@ let to_radians deg = deg *. Float.pi /. 180.
 let sign x = if Float.sign_bit x then -1. else 1.
 
 let calculate_new_pos (old : Point.t) old_heading intent =
-  let velocity = 1. in
+  let max_velocity = 1. in
+  let velocity = Float.min intent.distance max_velocity in
   let turn_rate = to_radians 5. in
   let dangle = sign intent.angle *. Float.min turn_rate (Float.abs intent.angle) in
   let angle = if Float.abs intent.angle < turn_rate then 0. else intent.angle +. dangle in
@@ -75,7 +76,7 @@ let calculate_new_pos (old : Point.t) old_heading intent =
   let dx = sin heading *. velocity in
   let dy = -.(cos heading *. velocity) in
   let distance = Float.max 0. (intent.distance -. velocity) in
-  let x, y = if distance > 0. then old.x +. dx, old.y +. dy else old.x, old.y in
+  let x, y = old.x +. dx, old.y +. dy in
   let position = Point.make ~x ~y in
   let remaining_intent = { distance; angle } in
   Some { intent = remaining_intent; position; heading }
@@ -149,7 +150,6 @@ let run_tick game_state tick =
     game_state.players
     |> Player_map.filter_map (fun _id { state; impl } ->
       let module M = (val impl : Player.PLAYER) in
-      Printf.printf "  asking player: %s\n%!" M.meta.name;
       let tick_commands = M.on_tick tick in
       let commands = reduce_commands tick_commands in
       let ps = !state in

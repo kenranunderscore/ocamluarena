@@ -11,8 +11,8 @@ end
 
 function m.on_tick(n)
   log("got tick event: " .. n)
-  if n < 1000 then
-    return { me.move(50) }
+  if n < 100 then
+    return { me.move(200), me.turn_right(0.02) }
   else
     return {}
   end

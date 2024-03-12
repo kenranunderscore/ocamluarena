@@ -23,6 +23,30 @@ module type PLAYER = sig
 end
 
 module Lua = struct
+  (** Read all the commands returned as the result of calling an event handler.
+      This expects the returned table to be on the top of the stack. *)
+  let lua_read_commands ls =
+    if Lua.istable ls (-1)
+    then (
+      match Lua.objlen ls (-1) with
+      | 0 -> []
+      | size ->
+        Printf.printf "size: %i\n%!" size;
+        let rec go index cmds =
+          Lua.pushinteger ls index;
+          Lua.gettable ls (-2);
+          match Lua.touserdata ls (-1) with
+          | Some (`Userdata cmd) ->
+            Lua.pop ls 1;
+            let new_acc = cmd :: cmds in
+            if index = size then new_acc else go (index + 1) new_acc
+          | Some _ -> failwith "lightuserdata"
+          | None -> failwith "unexpected return value"
+        in
+        List.rev (go 1 []))
+    else []
+  ;;
+
   let lua_call_on_tick_event ls tick =
     Lua.getfield ls 1 "on_tick";
     if Lua.isnil ls (-1)
@@ -32,18 +56,7 @@ module Lua = struct
     else (
       Lua.pushinteger ls tick;
       Lua.call ls 1 1;
-      if Lua.istable ls (-1)
-      then (
-        (* TODO: read all the commands *)
-        let _size = Lua.objlen ls (-1) in
-        Lua.pushinteger ls 1;
-        Lua.gettable ls (-2);
-        match Lua.touserdata ls (-1) with
-        | Some (`Userdata cmd) ->
-          let commands = [ cmd ] in
-          commands
-        | _ -> [])
-      else [])
+      lua_read_commands ls)
   ;;
 
   let make_lua_player ls meta : (module PLAYER) =
@@ -104,6 +117,18 @@ module Lua = struct
             let distance = Lua.tonumber l (-1) in
             Lua.pop ls 1;
             Lua.newuserdata ls (Move distance);
+            1 )
+      ; ( "turn_right"
+        , fun l ->
+            let angle = Lua.tonumber l (-1) in
+            Lua.pop ls 1;
+            Lua.newuserdata ls (Turn_right angle);
+            1 )
+      ; ( "turn_left"
+        , fun l ->
+            let angle = Lua.tonumber l (-1) in
+            Lua.pop ls 1;
+            Lua.newuserdata ls (Turn_right (-.angle));
             1 )
       ]
   ;;

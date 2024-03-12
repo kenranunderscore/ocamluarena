@@ -14,11 +14,12 @@ let default_intent = { distance = 0.0; angle = 0.0 }
 
 type player_state =
   { pos : Point.t
+  ; heading : float
   ; intent : intent
   }
 
-let make_state ~pos ~intent = { pos; intent }
-let make_initial_state pos = { pos; intent = default_intent }
+let make_state ~pos ~heading ~intent = { pos; intent; heading }
+let make_initial_state pos heading = { pos; heading; intent = default_intent }
 
 type player_data =
   { state : player_state ref
@@ -51,25 +52,33 @@ let draw_player renderer (meta : Player.meta) (player_state : player_state) =
 let reduce_commands commands = commands
 
 type movement_change =
-  { remaining_intent : intent
-  ; target_position : Point.t
+  { intent : intent
+  ; position : Point.t
+  ; heading : float
   }
 
-let calculate_new_pos (old_pos : Point.t) intent =
-  if Float.abs intent.distance > 0.0
-  then (
-    (* TODO: fix direction *)
-    let delta = if Float.sign_bit intent.distance then -1.0 else 1.0 in
-    let remaining_intent = { intent with distance = intent.distance -. delta } in
-    let target_position = { old_pos with x = old_pos.x +. delta } in
-    Some { remaining_intent; target_position })
-  else None
+let to_radians deg = deg *. Float.pi /. 180.
+let sign x = if Float.sign_bit x then -1. else 1.
+
+let calculate_new_pos (old : Point.t) old_heading intent =
+  let velocity = 1. in
+  let turn_rate = to_radians 5. in
+  let dangle = sign intent.angle *. Float.min turn_rate (Float.abs intent.angle) in
+  let angle = if Float.abs intent.angle < turn_rate then 0. else intent.angle +. dangle in
+  let heading = old_heading +. dangle in
+  let dx = sin heading *. velocity in
+  let dy = -.(cos heading *. velocity) in
+  let distance = Float.max 0. (intent.distance -. velocity) in
+  let x, y = if distance > 0. then old.x +. dx, old.y +. dy else old.x, old.y in
+  let position = Point.make ~x ~y in
+  let remaining_intent = { distance; angle } in
+  Some { intent = remaining_intent; position; heading }
 ;;
 
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
-    | Player.Move dist -> { intent with distance = dist }
-    | _ -> intent (* TODO: direction + angle *)
+    | Player.Move distance -> { intent with distance }
+    | Player.Turn_right angle -> { intent with angle }
   in
   List.fold_left apply_cmd old_intent cmds
 ;;
@@ -102,7 +111,7 @@ let find_colliding_players positions =
     (* TODO: find out who collided with whom -> event *)
     let colliding =
       Player_map.filter
-        (fun _p m -> players_collide movement_change.target_position m.target_position)
+        (fun _p m -> players_collide movement_change.position m.position)
         to_check
     in
     let new_acc = List.append acc (Player_map.bindings colliding) in
@@ -140,10 +149,10 @@ let run_tick game_state tick =
       let ps = !state in
       let new_intent = determine_intent ps.intent commands in
       state := { ps with intent = new_intent };
-      let desired_movement = calculate_new_pos ps.pos new_intent in
+      let desired_movement = calculate_new_pos ps.pos ps.heading new_intent in
       desired_movement |> Option.map (fun m -> state, m))
     |> Player_map.filter (fun id (_state, movement_change) ->
-      is_valid_position id movement_change.target_position game_state)
+      is_valid_position id movement_change.position game_state)
   in
   let collisions =
     moving_players |> Player_map.mapi (fun _ (_, m) -> m) |> find_colliding_players
@@ -153,8 +162,9 @@ let run_tick game_state tick =
   |> Player_map.iter (fun _id (state, movement_change) ->
     state
     := make_state
-         ~pos:movement_change.target_position
-         ~intent:movement_change.remaining_intent)
+         ~pos:movement_change.position
+         ~heading:movement_change.heading
+         ~intent:movement_change.intent)
 ;;
 
 let main_loop renderer (game_state : Game_state.t) =
@@ -185,9 +195,9 @@ let main_loop renderer (game_state : Game_state.t) =
 ;;
 
 let main () =
-  let state1 = ref @@ make_initial_state { x = 100.; y = 50. } in
+  let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
   let impl1 = Player.Lua.load "lloyd.lua" (fun () -> !state1.pos) in
-  let state2 = ref @@ make_initial_state { x = 450.; y = 80. } in
+  let state2 = ref @@ make_initial_state { x = 450.; y = 80. } Float.pi in
   let impl2 = Player.Lua.load "cole.lua" (fun () -> !state2.pos) in
   let game_state =
     Game_state.initial

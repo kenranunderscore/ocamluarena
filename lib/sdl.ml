@@ -46,8 +46,8 @@ let with_window_and_renderer ~w ~h title action =
 
 let[@inline] poll_event evt = Tsdl.Sdl.poll_event (Some evt)
 
-let[@inline] set_render_draw_color renderer ~r ~g ~b =
-  Tsdl.Sdl.set_render_draw_color renderer r g b 255 |> unwrap_sdl
+let[@inline] set_render_draw_color renderer ~red ~green ~blue =
+  Tsdl.Sdl.set_render_draw_color renderer red green blue 255 |> unwrap_sdl
 ;;
 
 let[@inline] render_clear renderer = Tsdl.Sdl.render_clear renderer |> unwrap_sdl

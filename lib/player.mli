@@ -21,5 +21,5 @@ module type PLAYER = sig
 end
 
 module Lua : sig
-  val load : string -> (unit -> Point.t) -> (module PLAYER)
+  val load : string -> (unit -> Point.t * float) -> (module PLAYER)
 end

@@ -11,10 +11,9 @@ type command =
 [@@deriving show]
 
 module Id = struct
-  type t = int
+  include Int
 
   let make n = n
-  let compare (p1 : t) p2 = compare p1 p2
 end
 
 module type PLAYER = sig
@@ -100,17 +99,30 @@ module Lua = struct
     else failwithf "player could not be loaded: '%s'\n%!" path
   ;;
 
-  let create_lua_api ls (get_pos : unit -> Point.t) =
+  let create_lua_api ls (get_pos : unit -> Point.t * float) =
     Lua.pushmodule
       ls
       "me"
       [ ( "x"
         , fun l ->
-            Lua.pushnumber l (get_pos ()).x;
+            Lua.pushnumber l (get_pos () |> fst).x;
             1 )
       ; ( "y"
         , fun l ->
-            Lua.pushnumber l (get_pos ()).y;
+            Lua.pushnumber l (get_pos () |> fst).y;
+            1 )
+      ; ( "position"
+        , fun l ->
+            let p = get_pos () |> fst in
+            Lua.newtable l;
+            Lua.pushnumber l p.x;
+            Lua.setfield l (-2) "x";
+            Lua.pushnumber l p.y;
+            Lua.setfield l (-2) "y";
+            1 )
+      ; ( "heading"
+        , fun l ->
+            Lua.pushnumber l (get_pos () |> snd);
             1 )
       ; ( "move"
         , fun l ->
@@ -133,10 +145,9 @@ module Lua = struct
       ]
   ;;
 
-  let load path (get_pos : unit -> Point.t) =
+  let load path (get_pos : unit -> Point.t * float) =
     let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
     create_lua_api lua_state get_pos;
-    let impl = make_lua_player lua_state meta in
-    impl
+    make_lua_player lua_state meta
   ;;
 end

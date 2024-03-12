@@ -12,10 +12,11 @@ end
 function m.on_tick(n)
   log("got tick event: " .. n)
   if n < 100 then
+    log("heading: " .. me.heading())
     return { me.move(200), me.turn_right(0.02) }
-  else
-    return {}
   end
+  p = me.position()
+  log("got position: (" .. p.x .. ", " .. p.y .. ")")
 end
 
 -- function m.on_kill_enemy(enemy_name)

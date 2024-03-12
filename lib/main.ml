@@ -40,16 +40,16 @@ module Game_state = struct
 end
 
 let draw_player renderer (meta : Player.meta) player_state =
-  let color = meta.color in
+  let { Color.red; green; blue } = meta.color in
   let p = player_state.pos in
-  Sdl.set_render_draw_color renderer ~r:color.red ~g:color.green ~b:color.blue;
+  Sdl.set_render_draw_color renderer ~red ~green ~blue;
   Sdl.draw_circle renderer p player_radius;
   (* draw heading *)
   let len = player_radius +. 10. in
   let x = p.x +. (len *. Float.sin player_state.heading) in
   let y = p.y -. (len *. Float.cos player_state.heading) in
   let dest = Point.make ~x ~y in
-  Sdl.set_render_draw_color renderer ~r:10 ~g:250 ~b:50;
+  Sdl.set_render_draw_color renderer ~red:10 ~green:250 ~blue:50;
   Sdl.draw_line renderer p dest
 ;;
 
@@ -189,7 +189,7 @@ let main_loop renderer (game_state : Game_state.t) =
       | _ -> ()
     done;
     ignore @@ run_tick game_state !tick;
-    Sdl.set_render_draw_color renderer ~r:20 ~g:20 ~b:20;
+    Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
     game_state.players
     |> Player_map.iter (fun _id { state; impl } ->
@@ -201,10 +201,14 @@ let main_loop renderer (game_state : Game_state.t) =
 ;;
 
 let main () =
+  let mk_state_reader r () =
+    let s = !r in
+    s.pos, s.heading
+  in
   let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
-  let impl1 = Player.Lua.load "lloyd.lua" (fun () -> !state1.pos) in
+  let impl1 = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
   let state2 = ref @@ make_initial_state { x = 450.; y = 80. } Float.pi in
-  let impl2 = Player.Lua.load "cole.lua" (fun () -> !state2.pos) in
+  let impl2 = Player.Lua.load "cole.lua" (mk_state_reader state2) in
   let game_state =
     Game_state.initial
     |> Game_state.add_player state1 impl1

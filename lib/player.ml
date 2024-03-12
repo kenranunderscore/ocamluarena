@@ -30,7 +30,6 @@ module Lua = struct
       match Lua.objlen ls (-1) with
       | 0 -> []
       | size ->
-        Printf.printf "size: %i\n%!" size;
         let rec go index cmds =
           Lua.pushinteger ls index;
           Lua.gettable ls (-2);
@@ -99,7 +98,7 @@ module Lua = struct
     else failwithf "player could not be loaded: '%s'\n%!" path
   ;;
 
-  let create_lua_api ls (get_pos : unit -> Point.t * float) =
+  let create_lua_api ls meta (get_pos : unit -> Point.t * float) =
     Lua.pushmodule
       ls
       "me"
@@ -142,12 +141,19 @@ module Lua = struct
             Lua.pop ls 1;
             Lua.newuserdata ls (Turn_right (-.angle));
             1 )
+      ; ( "log"
+        , fun l ->
+            (match Lua.tostring l (-1) with
+             | Some msg -> Printf.printf "[%s] %s\n%!" meta.name msg
+             | None -> ());
+            Lua.pop l 1;
+            0 )
       ]
   ;;
 
   let load path (get_pos : unit -> Point.t * float) =
     let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
-    create_lua_api lua_state get_pos;
+    create_lua_api lua_state meta get_pos;
     make_lua_player lua_state meta
   ;;
 end

@@ -3,20 +3,6 @@ module type PLAYER = Player.PLAYER
 module Player_map = Engine.Player_map
 module Game_state = Engine.Game_state
 
-let draw_player renderer (meta : Player.meta) (player_state : Engine.player_state) =
-  let { Color.red; green; blue } = meta.color in
-  let p = player_state.pos in
-  Sdl.set_render_draw_color renderer ~red ~green ~blue;
-  Sdl.draw_circle renderer p Engine.player_radius;
-  (* draw heading *)
-  let len = Engine.player_radius +. 10. in
-  let x = p.x +. (len *. Float.sin player_state.heading) in
-  let y = p.y -. (len *. Float.cos player_state.heading) in
-  let dest = Point.make ~x ~y in
-  Sdl.set_render_draw_color renderer ~red:10 ~green:250 ~blue:50;
-  Sdl.draw_line renderer p dest
-;;
-
 let main_loop renderer (game_state : Game_state.t) =
   let e = Sdl.Event.create () in
   let quit = ref false in
@@ -32,13 +18,13 @@ let main_loop renderer (game_state : Game_state.t) =
          | _ -> ())
       | _ -> ()
     done;
-    ignore @@ Engine.run_tick game_state !tick;
+    Engine.run_tick game_state !tick;
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
     game_state.players
     |> Player_map.iter (fun _id { Engine.state; impl } ->
       let module M = (val impl : PLAYER) in
-      draw_player renderer M.meta !state);
+      Render.player renderer M.meta !state);
     Sdl.render_present renderer;
     Thread.delay 0.01
   done

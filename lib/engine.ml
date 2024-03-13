@@ -19,10 +19,10 @@ type player_state =
   { pos : Point.t
   ; heading : float
   ; intent : intent
+  ; hp : int
   }
 
-let make_state ~pos ~heading ~intent = { pos; intent; heading }
-let make_initial_state pos heading = { pos; heading; intent = default_intent }
+let make_initial_state pos heading = { pos; heading; intent = default_intent; hp = 100 }
 
 type player_data =
   { state : player_state ref
@@ -155,8 +155,9 @@ let run_tick game_state tick =
   |> Player_map.filter (fun id _ -> not @@ List.exists (fun (p, _) -> p == id) collisions)
   |> Player_map.iter (fun _id (state, movement_change) ->
     state
-    := make_state
-         ~pos:movement_change.position
-         ~heading:movement_change.heading
-         ~intent:movement_change.intent)
+    := { !state with
+         pos = movement_change.position
+       ; heading = movement_change.heading
+       ; intent = movement_change.intent
+       })
 ;;

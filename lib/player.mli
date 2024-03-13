@@ -8,6 +8,12 @@ type command =
   | Turn_right of float
 [@@deriving show]
 
+type player_info =
+  { hp : int
+  ; pos : Point.t
+  ; heading : float
+  }
+
 module Id : sig
   type t
 
@@ -21,5 +27,5 @@ module type PLAYER = sig
 end
 
 module Lua : sig
-  val load : string -> (unit -> Point.t * float) -> (module PLAYER)
+  val load : string -> (unit -> player_info) -> (module PLAYER)
 end

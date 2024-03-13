@@ -21,6 +21,12 @@ module type PLAYER = sig
   val on_tick : int -> command list
 end
 
+type player_info =
+  { hp : int
+  ; pos : Point.t
+  ; heading : float
+  }
+
 module Lua = struct
   (** Read all the commands returned as the result of calling an event handler.
       This expects the returned table to be on the top of the stack. *)
@@ -98,21 +104,21 @@ module Lua = struct
     else failwithf "player could not be loaded: '%s'\n%!" path
   ;;
 
-  let create_lua_api ls meta (get_pos : unit -> Point.t * float) =
+  let create_lua_api ls meta get_player_info =
     Lua.pushmodule
       ls
       "me"
       [ ( "x"
         , fun l ->
-            Lua.pushnumber l (get_pos () |> fst).x;
+            Lua.pushnumber l (get_player_info ()).pos.x;
             1 )
       ; ( "y"
         , fun l ->
-            Lua.pushnumber l (get_pos () |> fst).y;
+            Lua.pushnumber l (get_player_info ()).pos.y;
             1 )
       ; ( "position"
         , fun l ->
-            let p = get_pos () |> fst in
+            let p = (get_player_info ()).pos in
             Lua.newtable l;
             Lua.pushnumber l p.x;
             Lua.setfield l (-2) "x";
@@ -121,7 +127,11 @@ module Lua = struct
             1 )
       ; ( "heading"
         , fun l ->
-            Lua.pushnumber l (get_pos () |> snd);
+            Lua.pushnumber l (get_player_info ()).heading;
+            1 )
+      ; ( "hp"
+        , fun l ->
+            Lua.pushinteger l (get_player_info ()).hp;
             1 )
       ; ( "move"
         , fun l ->
@@ -151,9 +161,9 @@ module Lua = struct
       ]
   ;;
 
-  let load path (get_pos : unit -> Point.t * float) =
+  let load path get_player_info =
     let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
-    create_lua_api lua_state meta get_pos;
+    create_lua_api lua_state meta get_player_info;
     make_lua_player lua_state meta
   ;;
 end

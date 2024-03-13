@@ -36,8 +36,8 @@ let main () =
      and based on the arena + players. Therefore the player insertion order
      should perhaps be randomized as well. *)
   let mk_state_reader (r : Engine.player_state ref) () =
-    let s = !r in
-    s.pos, s.heading
+    let { Engine.pos; heading; hp; _ } = !r in
+    { Player.pos; heading; hp }
   in
   let state1 =
     ref @@ Engine.make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.)

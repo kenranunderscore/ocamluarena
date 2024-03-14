@@ -67,7 +67,7 @@ let calculate_new_pos (old : Point.t) old_heading intent =
   let x, y = old.x +. dx, old.y +. dy in
   let position = Point.make ~x ~y in
   let remaining_intent = { distance; angle } in
-  Some { intent = remaining_intent; position; heading }
+  { intent = remaining_intent; position; heading }
 ;;
 
 let determine_intent old_intent cmds =
@@ -136,7 +136,7 @@ let find_colliding_players positions =
 let run_tick game_state tick =
   let moving_players =
     game_state.players
-    |> Player_map.filter_map (fun _id { state; impl } ->
+    |> Player_map.map (fun { state; impl } ->
       let module M = (val impl : PLAYER) in
       let tick_commands = M.on_tick tick in
       let commands = reduce_commands tick_commands in
@@ -144,7 +144,7 @@ let run_tick game_state tick =
       let new_intent = determine_intent ps.intent commands in
       state := { ps with intent = new_intent };
       let desired_movement = calculate_new_pos ps.pos ps.heading new_intent in
-      desired_movement |> Option.map (fun m -> state, m))
+      desired_movement |> fun m -> state, m)
     |> Player_map.filter (fun id (_state, movement_change) ->
       is_valid_position id movement_change.position game_state)
   in

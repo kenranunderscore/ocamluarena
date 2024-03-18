@@ -13,6 +13,9 @@ depends: [
   "ocaml"
   "dune" {>= "3.14"}
   "ppx_deriving"
+  "tsdl"
+  "tsdl-image"
+  "ocaml-lua"
   "odoc" {with-doc}
 ]
 build: [

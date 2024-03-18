@@ -136,20 +136,20 @@ module Lua = struct
       ; ( "move"
         , fun l ->
             let distance = Lua.tonumber l (-1) in
-            Lua.pop ls 1;
-            Lua.newuserdata ls (Move distance);
+            Lua.pop l 1;
+            Lua.newuserdata l (Move distance);
             1 )
       ; ( "turn_right"
         , fun l ->
             let angle = Lua.tonumber l (-1) in
-            Lua.pop ls 1;
-            Lua.newuserdata ls (Turn_right angle);
+            Lua.pop l 1;
+            Lua.newuserdata l (Turn_right angle);
             1 )
       ; ( "turn_left"
         , fun l ->
             let angle = Lua.tonumber l (-1) in
-            Lua.pop ls 1;
-            Lua.newuserdata ls (Turn_right (-.angle));
+            Lua.pop l 1;
+            Lua.newuserdata l (Turn_right (-.angle));
             1 )
       ; ( "log"
         , fun l ->

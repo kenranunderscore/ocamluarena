@@ -3,10 +3,13 @@ module type PLAYER = Player.PLAYER
 module Player_map = Engine.Player_map
 module Game_state = Engine.Game_state
 
+let global_scale = 2.0
+
 let main_loop renderer (game_state : Game_state.t) =
   let e = Sdl.Event.create () in
   let quit = ref false in
   let tick = ref 0 in
+  Sdl.scale renderer 1.5;
   while not !quit do
     tick := !tick + 1;
     while Sdl.poll_event e && not !quit do
@@ -18,7 +21,7 @@ let main_loop renderer (game_state : Game_state.t) =
          | _ -> ())
       | _ -> ()
     done;
-    Engine.run_tick game_state !tick;
+    Engine.step game_state !tick;
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
     game_state.players
@@ -56,8 +59,8 @@ let main () =
   in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
-      ~w:Engine.arena_width
-      ~h:Engine.arena_height
+      ~w:(Int.of_float @@ (global_scale *. Float.of_int Engine.arena_width))
+      ~h:(Int.of_float @@ (global_scale *. Float.of_int Engine.arena_height))
       "Arena"
       (fun _window renderer -> main_loop renderer game_state))
 ;;

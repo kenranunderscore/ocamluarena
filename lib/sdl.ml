@@ -94,3 +94,7 @@ let draw_circle renderer (p : Point.t) radius =
 let[@inline] draw_line renderer (p : Point.t) (q : Point.t) =
   Tsdl.Sdl.render_draw_line_f renderer p.x p.y q.x q.y |> unwrap_sdl
 ;;
+
+let[@inline] scale renderer factor =
+  Tsdl.Sdl.render_set_scale renderer factor factor |> unwrap_sdl
+;;

@@ -133,7 +133,7 @@ let find_colliding_players positions =
   | None -> []
 ;;
 
-let run_tick game_state tick =
+let step game_state tick =
   let moving_players =
     game_state.players
     |> Player_map.map (fun { state; impl } ->

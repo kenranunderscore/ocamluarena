@@ -19,6 +19,7 @@ end
 module type PLAYER = sig
   val meta : meta
   val on_tick : int -> command list
+  val on_enemy_seen : string -> Point.t -> command list
 end
 
 type player_info =
@@ -51,7 +52,7 @@ module Lua = struct
     else []
   ;;
 
-  let lua_call_on_tick_event ls tick =
+  let lua_tick ls tick =
     Lua.getfield ls 1 "on_tick";
     if Lua.isnil ls (-1)
     then (
@@ -63,10 +64,26 @@ module Lua = struct
       lua_read_commands ls)
   ;;
 
+  let lua_enemy_seen ls name (pos : Point.t) =
+    Lua.getfield ls 1 "on_enemy_seen";
+    if Lua.isnil ls (-1)
+    then (
+      Lua.pop ls 1;
+      [])
+    else (
+      (* TODO: custom payload -> lua table? *)
+      Lua.pushstring ls name;
+      Lua.pushnumber ls pos.x;
+      Lua.pushnumber ls pos.y;
+      Lua.call ls 2 1;
+      lua_read_commands ls)
+  ;;
+
   let make_lua_player ls meta : (module PLAYER) =
     (module struct
       let meta = meta
-      let on_tick tick = lua_call_on_tick_event ls tick
+      let on_tick tick = lua_tick ls tick
+      let on_enemy_seen name pos = lua_enemy_seen ls name pos
     end)
   ;;
 

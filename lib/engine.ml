@@ -133,31 +133,68 @@ let find_colliding_players positions =
   | None -> []
 ;;
 
-let step game_state tick =
-  let moving_players =
+(* an engine step consists of:
+   - transition: current intents -> new state * events
+     [ where do spells etc. fit in here? transition at the same time? after? ]
+   - call event handlers -> accumulate and reduce new commands
+   - apply commands to determine and set new intent
+*)
+
+type event =
+  | Tick of int
+  | Enemy_seen of string * Point.t
+
+let move_players game_state =
+  let player_moves =
     game_state.players
     |> Player_map.map (fun { state; impl } ->
       let module M = (val impl : PLAYER) in
-      let tick_commands = M.on_tick tick in
-      let commands = reduce_commands tick_commands in
       let ps = !state in
-      let new_intent = determine_intent ps.intent commands in
-      state := { ps with intent = new_intent };
-      let desired_movement = calculate_new_pos ps.pos ps.heading new_intent in
-      desired_movement |> fun m -> state, m)
-    |> Player_map.filter (fun id (_state, movement_change) ->
-      is_valid_position id movement_change.position game_state)
+      let move = calculate_new_pos ps.pos ps.heading ps.intent in
+      state, move)
+    |> Player_map.filter (fun id (_state, move) ->
+      is_valid_position id move.position game_state)
   in
-  let collisions =
-    moving_players |> Player_map.mapi (fun _ (_, m) -> m) |> find_colliding_players
-  in
-  moving_players
+  let collisions = player_moves |> Player_map.map snd |> find_colliding_players in
+  player_moves
   |> Player_map.filter (fun id _ -> not @@ List.exists (fun (p, _) -> p == id) collisions)
-  |> Player_map.iter (fun _id (state, movement_change) ->
+  |> Player_map.iter (fun _id (state, move) ->
     state
-    := { !state with
-         pos = movement_change.position
-       ; heading = movement_change.heading
-       ; intent = movement_change.intent
-       })
+    := { !state with pos = move.position; heading = move.heading; intent = move.intent });
+  (* FIXME: return events from movement execution (collisions etc.) *)
+  game_state.players |> Player_map.map (fun p -> p, [])
+;;
+
+let apply_intents tick game_state =
+  let movement_events = move_players game_state in
+  movement_events |> Player_map.map (fun (p, events) -> p, Tick tick :: events)
+;;
+
+let events_to_commands player events =
+  (* TODO: ordering? *)
+  let module M = (val player : PLAYER) in
+  events
+  |> List.concat_map (function
+    | Tick tick -> M.on_tick tick
+    | Enemy_seen (name, pos) -> M.on_enemy_seen name pos)
+;;
+
+let update_intent player_data commands =
+  let state = !(player_data.state) in
+  let new_intent = determine_intent state.intent commands in
+  player_data.state := { state with intent = new_intent };
+  player_data
+;;
+
+let step (game_state : Game_state.t) tick =
+  (* TODO: do I _really_ need to have refs to the player_states? couldn't I just
+     create the 'get_player_state' closures over the game state instead? *)
+  (* If I had that, I could do most of this purely! *)
+  let players =
+    game_state
+    |> apply_intents tick
+    |> Player_map.map (fun (p, events) -> p, events_to_commands p.impl events)
+    |> Player_map.map (fun (p, commands) -> update_intent p commands)
+  in
+  { Game_state.players }
 ;;

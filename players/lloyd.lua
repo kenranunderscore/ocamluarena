@@ -6,10 +6,14 @@ local m = {}
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
-  me.log("tick " .. n .. ": HP = " .. me.hp())
+  -- me.log("tick " .. n .. ": HP = " .. me.hp())
   if n < 100 then
     return { me.move(200), me.turn_right(0.02) }
   end
+end
+
+function m.on_enemy_seen(name, x, y)
+  me.log("enemy " .. name .. " seen at (" .. x(", ") .. y .. ")")
 end
 
 return m

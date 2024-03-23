@@ -5,10 +5,11 @@ module Game_state = Engine.Game_state
 
 let global_scale = 2.0
 
-let main_loop renderer (game_state : Game_state.t) =
+let main_loop renderer (initial_game_state : Game_state.t) =
   let e = Sdl.Event.create () in
   let quit = ref false in
   let tick = ref 0 in
+  let game_state = ref initial_game_state in
   Sdl.scale renderer 1.5;
   while not !quit do
     tick := !tick + 1;
@@ -21,15 +22,15 @@ let main_loop renderer (game_state : Game_state.t) =
          | _ -> ())
       | _ -> ()
     done;
-    Engine.step game_state !tick;
+    game_state := Engine.step !game_state !tick;
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
-    game_state.players
+    !game_state.players
     |> Player_map.iter (fun _id { Engine.state; impl } ->
       let module M = (val impl : PLAYER) in
       Render.player renderer M.meta !state);
     Sdl.render_present renderer;
-    Thread.delay 0.01
+    Thread.delay 0.005
   done
 ;;
 

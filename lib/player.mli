@@ -6,6 +6,7 @@ type meta =
 type command =
   | Move of float
   | Turn_right of float
+  | Attack of float
 [@@deriving show]
 
 type player_info =

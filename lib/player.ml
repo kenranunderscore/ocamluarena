@@ -8,6 +8,7 @@ type meta =
 type command =
   | Move of float
   | Turn_right of float
+  | Attack of float
 [@@deriving show]
 
 module Id = struct
@@ -155,6 +156,12 @@ module Lua = struct
             let distance = Lua.tonumber l (-1) in
             Lua.pop l 1;
             Lua.newuserdata l (Move distance);
+            1 )
+      ; ( "attack"
+        , fun l ->
+            let heading = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Attack heading);
             1 )
       ; ( "turn_right"
         , fun l ->

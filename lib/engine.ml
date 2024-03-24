@@ -11,9 +11,10 @@ module Player_map = Map.Make (Player.Id)
 type intent =
   { distance : float
   ; angle : float
+  ; attack : float option
   }
 
-let default_intent = { distance = 0.0; angle = 0.0 }
+let default_intent = { distance = 0.0; angle = 0.0; attack = None }
 
 type player_state =
   { pos : Point.t
@@ -29,15 +30,28 @@ type player_data =
   ; impl : (module PLAYER)
   }
 
-module Game_state = struct
-  type t = { players : player_data Player_map.t }
+type attack_state =
+  { pos : Point.t
+  ; heading : float
+  ; origin : Point.t
+  ; owner : Player.Id.t
+  }
 
-  let initial = { players = Player_map.empty }
+module Game_state = struct
+  (* TODO: get rid of refs everywhere; see FIXME/TODO below *)
+  type t =
+    { players : player_data Player_map.t
+    ; attacks : attack_state list ref
+    }
+
+  let initial = { players = Player_map.empty; attacks = ref [] }
 
   let add_player state impl game_state =
     let data = { state; impl } in
     let new_id = 1 + (Player_map.bindings game_state.players |> List.length) in
-    { players = Player_map.add (Player.Id.make new_id) data game_state.players }
+    { game_state with
+      players = Player_map.add (Player.Id.make new_id) data game_state.players
+    }
   ;;
 end
 
@@ -54,7 +68,16 @@ type movement_change =
 let to_radians deg = deg *. Float.pi /. 180.
 let sign x = if Float.sign_bit x then -1. else 1.
 
-let calculate_new_pos (old : Point.t) old_heading intent =
+(* FIXME: pull out common movement logic *)
+
+let calculate_new_pos (p : Point.t) heading velocity =
+  let dx = sin heading *. velocity in
+  let dy = -.(cos heading *. velocity) in
+  let x, y = p.x +. dx, p.y +. dy in
+  Point.make ~x ~y
+;;
+
+let calculate_movement (p : Point.t) old_heading intent =
   let max_velocity = 1. in
   let velocity = Float.min intent.distance max_velocity in
   let turn_rate = to_radians 5. in
@@ -64,16 +87,17 @@ let calculate_new_pos (old : Point.t) old_heading intent =
   let dx = sin heading *. velocity in
   let dy = -.(cos heading *. velocity) in
   let distance = Float.max 0. (intent.distance -. velocity) in
-  let x, y = old.x +. dx, old.y +. dy in
+  let x, y = p.x +. dx, p.y +. dy in
   let position = Point.make ~x ~y in
-  let remaining_intent = { distance; angle } in
+  let remaining_intent = { intent with distance; angle } in
   { intent = remaining_intent; position; heading }
 ;;
 
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
     | Player.Move distance -> { intent with distance }
-    | Player.Turn_right angle -> { intent with angle }
+    | Turn_right angle -> { intent with angle }
+    | Attack heading -> { intent with attack = Some heading }
   in
   List.fold_left apply_cmd old_intent cmds
 ;;
@@ -150,7 +174,7 @@ let move_players game_state =
     |> Player_map.map (fun { state; impl } ->
       let module M = (val impl : PLAYER) in
       let ps = !state in
-      let move = calculate_new_pos ps.pos ps.heading ps.intent in
+      let move = calculate_movement ps.pos ps.heading ps.intent in
       state, move)
     |> Player_map.filter (fun id (_state, move) ->
       is_valid_position id move.position game_state)
@@ -165,8 +189,45 @@ let move_players game_state =
   game_state.players |> Player_map.map (fun p -> p, [])
 ;;
 
+let transition_attacks (game_state : Game_state.t) =
+  let new_attacks =
+    !(game_state.attacks)
+    |> List.map (fun attack ->
+      let velocity = 3. in
+      let pos = calculate_new_pos attack.pos attack.heading velocity in
+      { attack with pos })
+  in
+  (* TODO: remove OOB attacks, create hit events etc. *)
+  game_state.attacks := new_attacks;
+  []
+;;
+
+let create_attacks (game_state : Game_state.t) =
+  let new_attacks =
+    game_state.players
+    |> Player_map.filter_map (fun id p ->
+      let ps = !(p.state) in
+      Option.map
+        (fun heading -> { origin = ps.pos; owner = id; pos = ps.pos; heading })
+        ps.intent.attack)
+    |> Player_map.to_list
+    |> List.map snd
+  in
+  (* TODO: add game_state function to add attacks *)
+  game_state.players
+  |> Player_map.iter (fun _id p ->
+    let ps = !(p.state) in
+    p.state := { ps with intent = { ps.intent with attack = None } });
+  let prev_attacks = !(game_state.attacks) in
+  game_state.attacks := List.append prev_attacks new_attacks;
+  []
+;;
+
 let apply_intents tick game_state =
   let movement_events = move_players game_state in
+  let attack_fired_events = create_attacks game_state in
+  (* TODO: need attack event for player; with attack type? I guess so *)
+  let attack_events = transition_attacks game_state in
   movement_events |> Player_map.map (fun (p, events) -> p, Tick tick :: events)
 ;;
 
@@ -196,5 +257,5 @@ let step (game_state : Game_state.t) tick =
     |> Player_map.map (fun (p, events) -> p, events_to_commands p.impl events)
     |> Player_map.map (fun (p, commands) -> update_intent p commands)
   in
-  { Game_state.players }
+  { game_state with Game_state.players }
 ;;

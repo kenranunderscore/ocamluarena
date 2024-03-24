@@ -25,12 +25,9 @@ let main_loop renderer (initial_game_state : Game_state.t) =
     game_state := Engine.step !game_state !tick;
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
-    !game_state.players
-    |> Player_map.iter (fun _id { Engine.state; impl } ->
-      let module M = (val impl : PLAYER) in
-      Render.player renderer M.meta !state);
+    Render.scene renderer !game_state;
     Sdl.render_present renderer;
-    Thread.delay 0.005
+    Thread.delay 0.01
   done
 ;;
 

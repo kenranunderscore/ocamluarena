@@ -6,7 +6,19 @@ let player_radius = player_diameter /. 2.
 
 module type PLAYER = Player.PLAYER
 
-module Player_map = Map.Make (Player.Id)
+module Player_map = struct
+  include Map.Make (Player.Id)
+
+  let difference m1 m2 =
+    merge
+      (fun _player l r ->
+        match l, r with
+        | Some x, None -> Some x
+        | _ -> None)
+      m1
+      m2
+  ;;
+end
 
 type intent =
   { distance : float
@@ -134,16 +146,7 @@ let find_colliding_players positions =
         to_check
     in
     let new_acc = List.append acc (Player_map.bindings colliding) in
-    let remaining =
-      (* TODO: map difference utility *)
-      Player_map.merge
-        (fun _player l r ->
-          match l, r with
-          | Some x, None -> Some x
-          | _ -> None)
-        to_check
-        colliding
-    in
+    let remaining = Player_map.difference to_check colliding in
     if Player_map.is_empty remaining
     then new_acc
     else (

@@ -116,6 +116,10 @@ let determine_intent old_intent cmds =
 
 let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
 
+let inside_arena { Point.x; y } =
+  x >= 0. && x <= arena_width && y >= 0. && y <= arena_height
+;;
+
 (* TODO: only pass "obstacles" instead of whole state *)
 let is_valid_position
   (player_id : Player.Id.t)
@@ -124,10 +128,7 @@ let is_valid_position
   =
   let r = player_diameter /. 2. in
   let stays_inside_arena =
-    x -. r >= 0.
-    && x +. r <= Float.of_int arena_width
-    && y -. r >= 0.
-    && y +. r <= Float.of_int arena_height
+    x -. r >= 0. && x +. r <= arena_width && y -. r >= 0. && y +. r <= arena_height
   in
   let would_hit_other_player =
     game_state.players
@@ -195,12 +196,12 @@ let move_players game_state =
 let transition_attacks (game_state : Game_state.t) =
   let new_attacks =
     !(game_state.attacks)
-    |> List.map (fun attack ->
+    |> List.filter_map (fun attack ->
       let velocity = 3. in
       let pos = calculate_new_pos attack.pos attack.heading velocity in
-      { attack with pos })
+      if inside_arena pos then Some { attack with pos } else None)
   in
-  (* TODO: remove OOB attacks, create hit events etc. *)
+  (* TODO: create hit events etc. *)
   game_state.attacks := new_attacks;
   []
 ;;

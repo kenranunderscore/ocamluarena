@@ -1,6 +1,6 @@
 let failwithf f = Printf.ksprintf failwith f
-let arena_width = 1000
-let arena_height = 800
+let arena_width = 1000.
+let arena_height = 800.
 let player_diameter = 50.
 let player_radius = player_diameter /. 2.
 

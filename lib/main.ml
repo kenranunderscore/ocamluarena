@@ -10,7 +10,7 @@ let main_loop renderer (initial_game_state : Game_state.t) =
   let quit = ref false in
   let tick = ref 0 in
   let game_state = ref initial_game_state in
-  Sdl.scale renderer 1.5;
+  Sdl.scale renderer global_scale;
   while not !quit do
     tick := !tick + 1;
     while Sdl.poll_event e && not !quit do
@@ -57,8 +57,8 @@ let main () =
   in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
-      ~w:(Int.of_float @@ (global_scale *. Float.of_int Engine.arena_width))
-      ~h:(Int.of_float @@ (global_scale *. Float.of_int Engine.arena_height))
+      ~w:(Int.of_float @@ (global_scale *. Engine.arena_width))
+      ~h:(Int.of_float @@ (global_scale *. Engine.arena_height))
       "Arena"
       (fun _window renderer -> main_loop renderer game_state))
 ;;

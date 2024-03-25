@@ -44,15 +44,12 @@ let main () =
     ref @@ Engine.make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.)
   in
   let impl1 = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
-  let state2 = ref @@ Engine.make_initial_state { x = 450.; y = 80. } Float.pi in
-  let impl2 = Player.Lua.load "cole.lua" (mk_state_reader state2) in
   let state3 =
     ref @@ Engine.make_initial_state { x = 600.; y = 500. } ((2. *. Float.pi) -. 1.)
   in
   let game_state =
     Game_state.initial
     |> Game_state.add_player state1 impl1
-    |> Game_state.add_player state2 impl2
     |> Game_state.add_player state3 (module Kai)
   in
   Sdl.with_sdl (fun () ->

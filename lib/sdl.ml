@@ -26,22 +26,40 @@ let with_sdl action =
       action ())
 ;;
 
-let with_window_and_renderer ~w ~h title action =
+let with_window ~w ~h title action =
   let flags = Tsdl.Sdl.Window.(shown + mouse_focus) in
-  match Tsdl.Sdl.create_window_and_renderer ~w ~h flags with
+  match Tsdl.Sdl.create_window title ~w ~h flags with
   | Error (`Msg e) ->
-    log "window+renderer creation failed: %s" e;
+    log "window creation failed: %s" e;
     exit 1
-  | Ok (window, renderer) ->
-    Tsdl.Sdl.set_window_title window title;
+  | Ok window ->
     let free () =
-      print_endline "freeing window+renderer...";
-      Tsdl.Sdl.destroy_renderer renderer;
+      print_endline "freeing window...";
       Tsdl.Sdl.destroy_window window
     in
     Fun.protect ~finally:free (fun () ->
-      print_endline "window+renderer created";
-      action window renderer)
+      print_endline "window created";
+      action window)
+;;
+
+let with_renderer window action =
+  let flags = Tsdl.Sdl.Renderer.accelerated in
+  match Tsdl.Sdl.create_renderer ~flags window with
+  | Error (`Msg e) ->
+    log "renderer creation failed: %s" e;
+    exit 1
+  | Ok renderer ->
+    let free () =
+      print_endline "freeing renderer...";
+      Tsdl.Sdl.destroy_renderer renderer
+    in
+    Fun.protect ~finally:free (fun () ->
+      print_endline "renderer created";
+      action renderer)
+;;
+
+let with_window_and_renderer ~w ~h title action =
+  with_window ~w ~h title (fun w -> with_renderer w (fun r -> action w r))
 ;;
 
 let[@inline] poll_event evt = Tsdl.Sdl.poll_event (Some evt)

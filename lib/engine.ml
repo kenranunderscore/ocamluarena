@@ -81,30 +81,36 @@ module Game_state = struct
   ;;
 end
 
-module Game = struct
-  let start_new _player_files =
-    (* TODO: implement add_player s.t. ids and state are distributed
-       automatically, with initial position and heading being randomized
-       (seeded), and based on the arena + players. Therefore the player
-       insertion order should perhaps be randomized as well. *)
-    let mk_state_reader (r : player_state ref) () =
-      let { pos; heading; hp; _ } = !r in
-      { Player.pos; heading; hp }
-    in
-    let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
-    let lloyd = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
-    let state2 =
-      ref @@ make_initial_state { x = 600.; y = 500. } ((2. *. Float.pi) -. 1.)
-    in
-    let kai = Player.Lua.load "kai.lua" (mk_state_reader state2) in
-    let game_state =
-      Game_state.initial
-      |> Game_state.add_player state1 lloyd
-      |> Game_state.add_player state2 kai
-    in
-    game_state
-  ;;
-end
+let round_over (game_state : Game_state.t) =
+  Player_map.cardinal game_state.living_players <= 1
+;;
+
+let round_winner (game_state : Game_state.t) =
+  Player_map.choose_opt game_state.living_players
+;;
+
+let start_new _player_files =
+  (* TODO: implement add_player s.t. ids and state are distributed
+     automatically, with initial position and heading being randomized
+     (seeded), and based on the arena + players. Therefore the player
+     insertion order should perhaps be randomized as well. *)
+  let mk_state_reader (r : player_state ref) () =
+    let { pos; heading; hp; _ } = !r in
+    { Player.pos; heading; hp }
+  in
+  let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
+  let lloyd = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
+  let state2 =
+    ref @@ make_initial_state { x = 600.; y = 500. } ((2. *. Float.pi) -. 1.)
+  in
+  let kai = Player.Lua.load "kai.lua" (mk_state_reader state2) in
+  let game_state =
+    Game_state.initial
+    |> Game_state.add_player state1 lloyd
+    |> Game_state.add_player state2 kai
+  in
+  game_state
+;;
 
 (* TODO: implement: take the 'latest' (according to event order?) command of
    each type *)
@@ -377,6 +383,11 @@ let distribute_events tick events (game_state : Game_state.t) =
   Player_map.map (fun (p, events) -> p, events_to_commands p.impl events) player_events
 ;;
 
+type step_result =
+  | Round_won of (Player.Id.t * player_data)
+  | Draw
+  | Next_state of Game_state.t
+
 let step (game_state : Game_state.t) tick =
   (* TODO: do I _really_ need to have refs to the player_states? couldn't I just
      create the 'get_player_state' closures over the game state instead? *)
@@ -390,8 +401,9 @@ let step (game_state : Game_state.t) tick =
         let victim = Player_map.find_first (( = ) id) game_state.living_players |> snd in
         let state = !(victim.state) in
         let hp = state.hp - 20 in
-        victim.state := { state with hp };
-        if is_dead !(victim.state) then [ Player_event (id, Death) ] else []
+        let new_state = { state with hp } in
+        victim.state := new_state;
+        if is_dead new_state then [ Player_event (id, Death) ] else []
       | Player_event _ -> [])
     |> List.concat
   in

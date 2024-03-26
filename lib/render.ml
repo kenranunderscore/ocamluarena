@@ -34,7 +34,7 @@ let players renderer (game_state : Game_state.t) =
 
 let attack renderer (attack : Engine.attack_state) =
   Sdl.set_render_draw_color renderer ~red:255 ~green:255 ~blue:255;
-  Sdl.draw_circle renderer attack.pos 2.
+  Sdl.draw_circle renderer attack.pos Engine.attack_radius
 ;;
 
 let attacks renderer (attacks : Engine.attack_state list) =
@@ -43,5 +43,5 @@ let attacks renderer (attacks : Engine.attack_state list) =
 
 let scene renderer (game_state : Game_state.t) =
   players renderer game_state;
-  attacks renderer !(game_state.attacks)
+  !(game_state.attacks) |> Player_map.iter (fun _id atts -> attacks renderer atts)
 ;;

@@ -6,7 +6,7 @@ local m = {}
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
-  if n == 1 then
+  if n % 50 == 0 then
     me.log("shooting")
     return { me.attack(2.1) }
   end

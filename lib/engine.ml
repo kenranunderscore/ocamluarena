@@ -186,7 +186,13 @@ type event =
   | Tick of int
   | Enemy_seen of string * Point.t (* TODO: replace string with enemy information *)
   | Attack_hit of string * Point.t
+  | Hit_by of string
 
+type targeted_event =
+  | Global_event of event
+  | Player_event of Player.Id.t * event
+
+(* TODO: move attacks or players first? *)
 let move_players game_state =
   let player_moves =
     game_state.players
@@ -204,8 +210,8 @@ let move_players game_state =
   |> Player_map.iter (fun _id (state, move) ->
     state
     := { !state with pos = move.position; heading = move.heading; intent = move.intent });
-  (* FIXME: return events from movement execution (collisions etc.) *)
-  game_state.players |> Player_map.map (fun p -> p, [])
+  (* TODO: return events from movement execution (collisions etc.) *)
+  game_state.players, []
 ;;
 
 let players_hit attack players =
@@ -216,6 +222,7 @@ let players_hit attack players =
 ;;
 
 let transition_attacks (game_state : Game_state.t) =
+  let players = game_state.players in
   let attacks_or_events =
     !(game_state.attacks)
     |> Player_map.map (fun attacks ->
@@ -225,18 +232,26 @@ let transition_attacks (game_state : Game_state.t) =
           let pos = calculate_new_pos attack.pos attack.heading velocity in
           if inside_arena pos
           then (
-            let hits =
-              players_hit attack game_state.players |> Player_map.bindings |> List.map snd
-            in
-            if List.is_empty hits
+            let hits = players_hit attack game_state.players in
+            if Player_map.is_empty hits
             then { attack with pos } :: atts, evts
             else
               ( atts
-              , List.map
-                  (fun p ->
-                    let module M = (val p.impl : PLAYER) in
-                    Attack_hit (M.meta.name, !(p.state).pos))
+              , Player_map.mapi
+                  (fun victim_id p ->
+                    let _, owner =
+                      Player_map.find_first (fun id -> id = attack.owner) players
+                    in
+                    let module Victim = (val p.impl : PLAYER) in
+                    let module Attacker = (val owner.impl : PLAYER) in
+                    [ Player_event
+                        (attack.owner, Attack_hit (Victim.meta.name, !(p.state).pos))
+                    ; Player_event (victim_id, Hit_by Attacker.meta.name)
+                    ])
                   hits
+                |> Player_map.bindings
+                |> List.map snd
+                |> List.concat
                 |> List.append evts ))
           else acc)
         attacks
@@ -244,7 +259,10 @@ let transition_attacks (game_state : Game_state.t) =
   in
   game_state.attacks := Player_map.map fst attacks_or_events;
   (* FIXME: collect ALL events, with recipients, and the distribute _later_ *)
-  attacks_or_events |> Player_map.map snd
+  Player_map.fold
+    (fun _id evts acc -> List.append evts acc)
+    (attacks_or_events |> Player_map.map snd)
+    []
 ;;
 
 let create_attacks (game_state : Game_state.t) =
@@ -273,26 +291,15 @@ let create_attacks (game_state : Game_state.t) =
        prev_attacks
        new_attacks;
   (* TODO: add "attacking player" events *)
-  Player_map.empty
+  []
 ;;
 
-let apply_intents tick game_state =
-  let movement_events = move_players game_state in
+let apply_intents game_state =
+  let _new_state, movement_events = move_players game_state in
   let attack_events = transition_attacks game_state in
   (* TODO: need attack event for player; with attack type? I guess so *)
-  let _attack_fired_events = create_attacks game_state in
-  let events =
-    Player_map.merge
-      (fun _id ma mb ->
-        match ma, mb with
-        | Some (p, a), Some b -> Some (p, List.append a b)
-        | Some x, None -> Some x
-        | None, Some _ -> None (* impossible *)
-        | None, None -> None)
-      movement_events
-      attack_events
-  in
-  events |> Player_map.map (fun (p, events) -> p, Tick tick :: events)
+  let attack_fired_events = create_attacks game_state in
+  List.concat [ movement_events; attack_events; attack_fired_events ]
 ;;
 
 let events_to_commands player events =
@@ -302,25 +309,39 @@ let events_to_commands player events =
   |> List.concat_map (function
     | Tick tick -> M.on_tick tick
     | Enemy_seen (name, pos) -> M.on_enemy_seen name pos
-    | Attack_hit (name, pos) -> M.on_attack_hit name pos)
+    | Attack_hit (name, pos) -> M.on_attack_hit name pos
+    | Hit_by name -> M.on_hit_by name)
 ;;
 
 let update_intent player_data commands =
   let state = !(player_data.state) in
   let new_intent = determine_intent state.intent commands in
-  player_data.state := { state with intent = new_intent };
-  player_data
+  player_data.state := { state with intent = new_intent }
+;;
+
+let distribute_events tick events (game_state : Game_state.t) =
+  let all_events = Global_event (Tick tick) :: events in
+  let player_events =
+    game_state.players
+    |> Player_map.mapi (fun id p ->
+      ( p
+      , List.filter_map
+          (function
+            | Global_event evt -> Some evt
+            | Player_event (id', evt) when id' = id -> Some evt
+            | Player_event _ -> None)
+          all_events ))
+  in
+  Player_map.map (fun (p, events) -> p, events_to_commands p.impl events) player_events
 ;;
 
 let step (game_state : Game_state.t) tick =
   (* TODO: do I _really_ need to have refs to the player_states? couldn't I just
      create the 'get_player_state' closures over the game state instead? *)
   (* If I had that, I could do most of this purely! *)
-  let players =
-    game_state
-    |> apply_intents tick
-    |> Player_map.map (fun (p, events) -> p, events_to_commands p.impl events)
-    |> Player_map.map (fun (p, commands) -> update_intent p commands)
-  in
-  { game_state with Game_state.players }
+  let events = apply_intents game_state in
+  (* FIXME: handle events that lead to state transitions *)
+  let player_commands = distribute_events tick events game_state in
+  Player_map.iter (fun _id (p, commands) -> update_intent p commands) player_commands;
+  game_state
 ;;

@@ -24,4 +24,8 @@ function m.on_attack_hit(name, x, y)
   me.log("enemy " .. name .. " HIT at (" .. x .. ", " .. y .. ")")
 end
 
+function m.on_hit_by(name)
+  me.log("ouch! FUCK YOU, " .. name)
+end
+
 return m

@@ -22,6 +22,7 @@ module type PLAYER = sig
   val on_tick : int -> command list
   val on_enemy_seen : string -> Point.t -> command list
   val on_attack_hit : string -> Point.t -> command list
+  val on_hit_by : string -> command list
 end
 
 type player_info =
@@ -96,12 +97,25 @@ module Lua = struct
       lua_read_commands ls)
   ;;
 
+  let lua_hit_by ls name =
+    Lua.getfield ls 1 "on_hit_by";
+    if Lua.isnil ls (-1)
+    then (
+      Lua.pop ls 1;
+      [])
+    else (
+      Lua.pushstring ls name;
+      Lua.call ls 1 1;
+      lua_read_commands ls)
+  ;;
+
   let make_lua_player ls meta : (module PLAYER) =
     (module struct
       let meta = meta
       let on_tick tick = lua_tick ls tick
       let on_enemy_seen name pos = lua_enemy_seen ls name pos
       let on_attack_hit name pos = lua_attack_hit ls name pos
+      let on_hit_by name = lua_hit_by ls name
     end)
   ;;
 

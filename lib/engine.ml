@@ -56,17 +56,27 @@ type attack_state =
 module Game_state = struct
   (* TODO: get rid of refs everywhere; see FIXME/TODO below *)
   type t =
-    { players : player_data Player_map.t
+    { living_players : player_data Player_map.t
+    ; dead_players : player_data Player_map.t
     ; attacks : attack_state list Player_map.t ref
     }
 
-  let initial = { players = Player_map.empty; attacks = ref Player_map.empty }
+  let initial =
+    { living_players = Player_map.empty
+    ; dead_players = Player_map.empty
+    ; attacks = ref Player_map.empty
+    }
+  ;;
+
+  (* find_first: here *)
 
   let add_player state impl game_state =
     let data = { state; impl } in
-    let new_id = 1 + (Player_map.bindings game_state.players |> List.length) in
+    (* NOTE: assumes no players are dead *)
+    let new_id = 1 + (Player_map.bindings game_state.living_players |> List.length) in
     { game_state with
-      players = Player_map.add (Player.Id.make new_id) data game_state.players
+      living_players =
+        Player_map.add (Player.Id.make new_id) data game_state.living_players
     }
   ;;
 end
@@ -146,7 +156,7 @@ let is_valid_position
     x -. r >= 0. && x +. r <= arena_width && y -. r >= 0. && y +. r <= arena_height
   in
   let would_hit_other_player =
-    game_state.players
+    game_state.living_players
     |> Player_map.exists (fun id { state; _ } ->
       player_id != id && players_collide p !state.pos)
   in
@@ -197,7 +207,7 @@ type targeted_event =
 (* TODO: move attacks or players first? *)
 let move_players game_state =
   let player_moves =
-    game_state.players
+    game_state.living_players
     |> Player_map.map (fun { state; impl } ->
       let module M = (val impl : PLAYER) in
       let ps = !state in
@@ -213,7 +223,7 @@ let move_players game_state =
     state
     := { !state with pos = move.position; heading = move.heading; intent = move.intent });
   (* TODO: return events from movement execution (collisions etc.) *)
-  game_state.players, []
+  game_state.living_players, []
 ;;
 
 let players_hit attack players =
@@ -224,7 +234,6 @@ let players_hit attack players =
 ;;
 
 let transition_attacks (game_state : Game_state.t) =
-  let players = game_state.players in
   let attacks_or_events =
     !(game_state.attacks)
     |> Player_map.map (fun attacks ->
@@ -234,7 +243,7 @@ let transition_attacks (game_state : Game_state.t) =
           let pos = calculate_new_pos attack.pos attack.heading velocity in
           if inside_arena pos
           then (
-            let hits = players_hit attack game_state.players in
+            let hits = players_hit attack game_state.living_players in
             if Player_map.is_empty hits
             then { attack with pos } :: atts, evts
             else
@@ -242,7 +251,9 @@ let transition_attacks (game_state : Game_state.t) =
               , Player_map.mapi
                   (fun victim_id p ->
                     let _, owner =
-                      Player_map.find_first (fun id -> id = attack.owner) players
+                      Player_map.find_first
+                        (fun id -> id = attack.owner)
+                        game_state.living_players
                     in
                     let module Victim = (val p.impl : PLAYER) in
                     let module Attacker = (val owner.impl : PLAYER) in
@@ -269,7 +280,7 @@ let transition_attacks (game_state : Game_state.t) =
 
 let create_attacks (game_state : Game_state.t) =
   let new_attacks =
-    game_state.players
+    game_state.living_players
     |> Player_map.filter_map (fun id p ->
       let ps = !(p.state) in
       Option.map
@@ -277,7 +288,7 @@ let create_attacks (game_state : Game_state.t) =
         ps.intent.attack)
   in
   (* TODO: add game_state function to add attacks *)
-  game_state.players
+  game_state.living_players
   |> Player_map.iter (fun _id p ->
     let ps = !(p.state) in
     p.state := { ps with intent = { ps.intent with attack = None } });
@@ -328,7 +339,8 @@ let update_intent player_data commands =
 let distribute_events tick events (game_state : Game_state.t) =
   let all_events = Global_event (Tick tick) :: events in
   let player_events =
-    game_state.players
+    (* TODO: propagate to all players? see find_first *)
+    game_state.living_players
     |> Player_map.mapi (fun id p ->
       ( p
       , List.filter_map
@@ -352,7 +364,7 @@ let step (game_state : Game_state.t) tick =
       | Global_event _ -> []
       | Player_event (id, Hit_by _) ->
         let victim =
-          Player_map.find_first (fun id' -> id' = id) game_state.players |> snd
+          Player_map.find_first (fun id' -> id' = id) game_state.living_players |> snd
         in
         let state = !(victim.state) in
         let hp = state.hp - 20 in
@@ -361,8 +373,24 @@ let step (game_state : Game_state.t) tick =
       | Player_event _ -> [])
     |> List.concat
   in
+  let new_state =
+    List.fold_right
+      (fun evt acc ->
+        match evt with
+        | Player_event (id, Death) ->
+          let player =
+            Player_map.find_first (fun id' -> id' = id) game_state.living_players |> snd
+          in
+          { game_state with
+            living_players = Player_map.remove id game_state.living_players
+          ; dead_players = Player_map.add id player game_state.dead_players
+          }
+        | _ -> acc)
+      followup_events
+      game_state
+  in
   let all_events = List.append events followup_events in
   let player_commands = distribute_events tick all_events game_state in
   Player_map.iter (fun _id (p, commands) -> update_intent p commands) player_commands;
-  game_state
+  new_state
 ;;

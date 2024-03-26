@@ -26,7 +26,7 @@ let player renderer (meta : Player.meta) (player_state : Engine.player_state) =
 ;;
 
 let players renderer (game_state : Game_state.t) =
-  game_state.players
+  game_state.living_players
   |> Player_map.iter (fun _id { Engine.state; impl } ->
     let module M = (val impl : PLAYER) in
     player renderer M.meta !state)

@@ -81,6 +81,31 @@ module Game_state = struct
   ;;
 end
 
+module Game = struct
+  let start_new _player_files =
+    (* TODO: implement add_player s.t. ids and state are distributed
+       automatically, with initial position and heading being randomized
+       (seeded), and based on the arena + players. Therefore the player
+       insertion order should perhaps be randomized as well. *)
+    let mk_state_reader (r : player_state ref) () =
+      let { pos; heading; hp; _ } = !r in
+      { Player.pos; heading; hp }
+    in
+    let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
+    let lloyd = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
+    let state2 =
+      ref @@ make_initial_state { x = 600.; y = 500. } ((2. *. Float.pi) -. 1.)
+    in
+    let kai = Player.Lua.load "kai.lua" (mk_state_reader state2) in
+    let game_state =
+      Game_state.initial
+      |> Game_state.add_player state1 lloyd
+      |> Game_state.add_player state2 kai
+    in
+    game_state
+  ;;
+end
+
 (* TODO: implement: take the 'latest' (according to event order?) command of
    each type *)
 let reduce_commands commands = commands

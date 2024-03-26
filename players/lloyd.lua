@@ -6,7 +6,7 @@ local m = {}
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
-  if n % 50 == 0 then
+  if n % 10 == 0 then
     me.log("shooting")
     return { me.attack(2.1) }
   end
@@ -17,7 +17,11 @@ function m.on_tick(n)
 end
 
 function m.on_enemy_seen(name, x, y)
-  me.log("enemy " .. name .. " seen at (" .. x(", ") .. y .. ")")
+  me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
+end
+
+function m.on_attack_hit(name, x, y)
+  me.log("enemy " .. name .. " HIT at (" .. x .. ", " .. y .. ")")
 end
 
 return m

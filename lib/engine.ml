@@ -302,7 +302,7 @@ let events_to_commands player events =
   |> List.concat_map (function
     | Tick tick -> M.on_tick tick
     | Enemy_seen (name, pos) -> M.on_enemy_seen name pos
-    | Attack_hit _ -> [])
+    | Attack_hit (name, pos) -> M.on_attack_hit name pos)
 ;;
 
 let update_intent player_data commands =

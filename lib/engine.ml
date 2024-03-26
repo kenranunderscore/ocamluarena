@@ -296,7 +296,6 @@ let transition_attacks (game_state : Game_state.t) =
         ([], []))
   in
   game_state.attacks := Player_map.map fst attacks_or_events;
-  (* FIXME: collect ALL events, with recipients, and the distribute _later_ *)
   Player_map.fold
     (fun _id evts acc -> List.append evts acc)
     (attacks_or_events |> Player_map.map snd)
@@ -388,9 +387,7 @@ let step (game_state : Game_state.t) tick =
     |> List.map (function
       | Global_event _ -> []
       | Player_event (id, Hit_by _) ->
-        let victim =
-          Player_map.find_first (fun id' -> id' = id) game_state.living_players |> snd
-        in
+        let victim = Player_map.find_first (( = ) id) game_state.living_players |> snd in
         let state = !(victim.state) in
         let hp = state.hp - 20 in
         victim.state := { state with hp };
@@ -404,7 +401,7 @@ let step (game_state : Game_state.t) tick =
         match evt with
         | Player_event (id, Death) ->
           let player =
-            Player_map.find_first (fun id' -> id' = id) game_state.living_players |> snd
+            Player_map.find_first (( = ) id) game_state.living_players |> snd
           in
           { game_state with
             living_players = Player_map.remove id game_state.living_players

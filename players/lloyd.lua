@@ -7,7 +7,7 @@ m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
   if n % 10 == 0 then
-    me.log("shooting")
+    me.log("pew")
     return { me.attack(2.1) }
   end
 
@@ -26,6 +26,10 @@ end
 
 function m.on_hit_by(name)
   me.log("ouch! FUCK YOU, " .. name)
+end
+
+function m.on_death()
+  me.log("das war's, ich bin tot")
 end
 
 return m

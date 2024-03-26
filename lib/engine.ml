@@ -38,6 +38,7 @@ type player_state =
   ; hp : int
   }
 
+let is_dead player_state = player_state.hp <= 0
 let make_initial_state pos heading = { pos; heading; intent = default_intent; hp = 100 }
 
 type player_data =
@@ -187,6 +188,7 @@ type event =
   | Enemy_seen of string * Point.t (* TODO: replace string with enemy information *)
   | Attack_hit of string * Point.t
   | Hit_by of string
+  | Death
 
 type targeted_event =
   | Global_event of event
@@ -310,7 +312,10 @@ let events_to_commands player events =
     | Tick tick -> M.on_tick tick
     | Enemy_seen (name, pos) -> M.on_enemy_seen name pos
     | Attack_hit (name, pos) -> M.on_attack_hit name pos
-    | Hit_by name -> M.on_hit_by name)
+    | Hit_by name -> M.on_hit_by name
+    | Death ->
+      M.on_death ();
+      [])
 ;;
 
 let update_intent player_data commands =
@@ -319,6 +324,7 @@ let update_intent player_data commands =
   player_data.state := { state with intent = new_intent }
 ;;
 
+(* FIXME: define event order, and sort accordingly *)
 let distribute_events tick events (game_state : Game_state.t) =
   let all_events = Global_event (Tick tick) :: events in
   let player_events =
@@ -340,8 +346,23 @@ let step (game_state : Game_state.t) tick =
      create the 'get_player_state' closures over the game state instead? *)
   (* If I had that, I could do most of this purely! *)
   let events = apply_intents game_state in
-  (* FIXME: handle events that lead to state transitions *)
-  let player_commands = distribute_events tick events game_state in
+  let followup_events =
+    events
+    |> List.map (function
+      | Global_event _ -> []
+      | Player_event (id, Hit_by _) ->
+        let victim =
+          Player_map.find_first (fun id' -> id' = id) game_state.players |> snd
+        in
+        let state = !(victim.state) in
+        let hp = state.hp - 20 in
+        victim.state := { state with hp };
+        if is_dead !(victim.state) then [ Player_event (id, Death) ] else []
+      | Player_event _ -> [])
+    |> List.concat
+  in
+  let all_events = List.append events followup_events in
+  let player_commands = distribute_events tick all_events game_state in
   Player_map.iter (fun _id (p, commands) -> update_intent p commands) player_commands;
   game_state
 ;;

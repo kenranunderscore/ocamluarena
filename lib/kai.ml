@@ -10,3 +10,5 @@ let on_hit_by _name =
   print_endline "[Kai] OUCH";
   []
 ;;
+
+let on_death () = print_endline "das war's, ich bin tot"

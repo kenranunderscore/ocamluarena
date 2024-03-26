@@ -28,6 +28,7 @@ module type PLAYER = sig
   val on_enemy_seen : string -> Point.t -> command list
   val on_attack_hit : string -> Point.t -> command list
   val on_hit_by : string -> command list
+  val on_death : unit -> unit
 end
 
 module Lua : sig

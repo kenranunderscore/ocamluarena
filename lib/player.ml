@@ -23,6 +23,7 @@ module type PLAYER = sig
   val on_enemy_seen : string -> Point.t -> command list
   val on_attack_hit : string -> Point.t -> command list
   val on_hit_by : string -> command list
+  val on_death : unit -> unit
 end
 
 type player_info =
@@ -109,6 +110,11 @@ module Lua = struct
       lua_read_commands ls)
   ;;
 
+  let lua_on_death ls =
+    Lua.getfield ls 1 "on_death";
+    if Lua.isnil ls (-1) then Lua.pop ls 1 else Lua.call ls 0 0
+  ;;
+
   let make_lua_player ls meta : (module PLAYER) =
     (module struct
       let meta = meta
@@ -116,6 +122,7 @@ module Lua = struct
       let on_enemy_seen name pos = lua_enemy_seen ls name pos
       let on_attack_hit name pos = lua_attack_hit ls name pos
       let on_hit_by name = lua_hit_by ls name
+      let on_death () = lua_on_death ls
     end)
   ;;
 

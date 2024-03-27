@@ -39,7 +39,6 @@ type player_state =
   }
 
 let is_dead player_state = player_state.hp <= 0
-let make_initial_state pos heading = { pos; heading; intent = default_intent; hp = 100 }
 
 type player_data =
   { state : player_state ref
@@ -69,17 +68,62 @@ module Game_state = struct
   ;;
 
   (* find_first: here *)
-
-  let add_player state impl game_state =
-    let data = { state; impl } in
-    (* NOTE: assumes no players are dead *)
-    let new_id = 1 + (Player_map.bindings game_state.living_players |> List.length) in
-    { game_state with
-      living_players =
-        Player_map.add (Player.Id.make new_id) data game_state.living_players
-    }
-  ;;
 end
+
+let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
+
+let inside_arena { Point.x; y } =
+  x >= 0. && x <= arena_width && y >= 0. && y <= arena_height
+;;
+
+let rec first_with f pred =
+  let res = f () in
+  if pred res then res else first_with f pred
+;;
+
+let random_initial_state (game_state : Game_state.t) =
+  let random_coord dim =
+    dim -. (2. *. player_diameter) |> Random.float |> ( +. ) player_diameter
+  in
+  let random_pos () =
+    Point.make ~x:(random_coord arena_width) ~y:(random_coord arena_height)
+  in
+  let is_valid p =
+    not
+      (Player_map.exists
+         (fun _id { state; _ } -> Point.dist p !state.pos < 2. *. player_diameter)
+         game_state.living_players)
+  in
+  let pos = first_with random_pos is_valid in
+  let heading = Random.float (2. *. Float.pi) in
+  { pos; heading; hp = 100; intent = default_intent }
+;;
+
+let mk_state_reader (r : player_state ref) () =
+  let { pos; heading; hp; _ } = !r in
+  { Player.pos; heading; hp }
+;;
+
+let add_player player_file (game_state : Game_state.t) =
+  let state = ref (random_initial_state game_state) in
+  let impl = Player.Lua.load player_file (mk_state_reader state) in
+  let data = { state; impl } in
+  (* NOTE: assumes no players are dead *)
+  let new_id = 1 + (Player_map.bindings game_state.living_players |> List.length) in
+  { game_state with
+    living_players = Player_map.add (Player.Id.make new_id) data game_state.living_players
+  }
+;;
+
+let start_new _player_files =
+  (* TODO: player insertion order should perhaps be randomized. *)
+  (* TODO: random initial seed *)
+  (* let seed = Random.bits () in *)
+  (* Random.init seed; *)
+  Random.self_init ();
+  (* Printf.printf "started new game with random seed %i\n%!" seed; *)
+  Game_state.initial |> add_player "lloyd.lua" |> add_player "kai.lua"
+;;
 
 let round_over (game_state : Game_state.t) =
   Player_map.cardinal game_state.living_players <= 1
@@ -87,29 +131,6 @@ let round_over (game_state : Game_state.t) =
 
 let round_winner (game_state : Game_state.t) =
   Player_map.choose_opt game_state.living_players
-;;
-
-let start_new _player_files =
-  (* TODO: implement add_player s.t. ids and state are distributed
-     automatically, with initial position and heading being randomized
-     (seeded), and based on the arena + players. Therefore the player
-     insertion order should perhaps be randomized as well. *)
-  let mk_state_reader (r : player_state ref) () =
-    let { pos; heading; hp; _ } = !r in
-    { Player.pos; heading; hp }
-  in
-  let state1 = ref @@ make_initial_state { x = 200.; y = 50. } (2. *. Float.pi /. 3.) in
-  let lloyd = Player.Lua.load "lloyd.lua" (mk_state_reader state1) in
-  let state2 =
-    ref @@ make_initial_state { x = 600.; y = 500. } ((2. *. Float.pi) -. 1.)
-  in
-  let kai = Player.Lua.load "kai.lua" (mk_state_reader state2) in
-  let game_state =
-    Game_state.initial
-    |> Game_state.add_player state1 lloyd
-    |> Game_state.add_player state2 kai
-  in
-  game_state
 ;;
 
 (* TODO: implement: take the 'latest' (according to event order?) command of
@@ -125,16 +146,9 @@ type movement_change =
 let to_radians deg = deg *. Float.pi /. 180.
 let sign x = if Float.sign_bit x then -1. else 1.
 
-let dist_sqr (p1 : Point.t) (p2 : Point.t) =
-  let dx = p1.x -. p2.x in
-  let dy = p1.y -. p2.y in
-  (dx *. dx) +. (dy *. dy)
-;;
-
 (* TODO: inline? *)
 
-let dist (p1 : Point.t) (p2 : Point.t) = Float.sqrt (dist_sqr p1 p2)
-let circles_intersect (p1 : Point.t) r1 (p2 : Point.t) r2 = dist p1 p2 <= r1 +. r2
+let circles_intersect (p1 : Point.t) r1 (p2 : Point.t) r2 = Point.dist p1 p2 <= r1 +. r2
 
 (* FIXME: pull out common movement logic *)
 
@@ -168,12 +182,6 @@ let determine_intent old_intent cmds =
     | Attack heading -> { intent with attack = Some heading }
   in
   List.fold_left apply_cmd old_intent cmds
-;;
-
-let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
-
-let inside_arena { Point.x; y } =
-  x >= 0. && x <= arena_width && y >= 0. && y <= arena_height
 ;;
 
 (* TODO: only pass "obstacles" instead of whole state *)

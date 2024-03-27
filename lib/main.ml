@@ -9,7 +9,8 @@ let main_loop renderer =
   let e = Sdl.Event.create () in
   let quit = ref false in
   let tick = ref 0 in
-  let game_state = ref (Engine.start_new [ "lloyd.lua" ]) in
+  (* FIXME: degrade gracefully when players cannot be loaded *)
+  let game_state = ref (Engine.start_new [ "lloyd.lua"; "kai.lua" ]) in
   Sdl.scale renderer global_scale;
   while not !quit do
     tick := !tick + 1;

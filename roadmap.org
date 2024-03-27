@@ -1,9 +1,11 @@
-* Roadmap to v0.1 [0/13]
+#+STARTUP: showall
+
+* Roadmap to v0.1 [1/13]
 - [ ] field of vision + events being filtered by that
 - [ ] attack cooldown(s)
 - [ ] multiple rounds
 - [ ] choosable list of players for one game (cmd line args? minttea?)
-- [ ] randomized starting points
+- [X] randomized starting points
 - [ ] rudimentary stat tracking
 - [ ] figure out what movement should look like
   - IDEA: circle of action

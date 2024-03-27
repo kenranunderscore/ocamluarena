@@ -115,14 +115,19 @@ let add_player player_file (game_state : Game_state.t) =
   }
 ;;
 
-let start_new _player_files =
-  (* TODO: player insertion order should perhaps be randomized. *)
+let shuffle xs =
+  xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
+;;
+
+let start_new player_files =
   (* TODO: random initial seed *)
   (* let seed = Random.bits () in *)
   (* Random.init seed; *)
   Random.self_init ();
   (* Printf.printf "started new game with random seed %i\n%!" seed; *)
-  Game_state.initial |> add_player "lloyd.lua" |> add_player "kai.lua"
+  let shuffled = shuffle player_files in
+  shuffled |> List.iter print_endline;
+  List.fold_right add_player (shuffle player_files) Game_state.initial
 ;;
 
 let round_over (game_state : Game_state.t) =

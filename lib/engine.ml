@@ -57,13 +57,13 @@ module Game_state = struct
   type t =
     { living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
-    ; attacks : attack_state list Player_map.t ref
+    ; attacks : attack_state list Player_map.t
     }
 
   let initial =
     { living_players = Player_map.empty
     ; dead_players = Player_map.empty
-    ; attacks = ref Player_map.empty
+    ; attacks = Player_map.empty
     }
   ;;
 
@@ -267,7 +267,7 @@ let move_players game_state =
     state
     := { !state with pos = move.position; heading = move.heading; intent = move.intent });
   (* TODO: return events from movement execution (collisions etc.) *)
-  game_state.living_players, []
+  game_state, []
 ;;
 
 let players_hit attack players =
@@ -279,7 +279,7 @@ let players_hit attack players =
 
 let transition_attacks (game_state : Game_state.t) =
   let attacks_or_events =
-    !(game_state.attacks)
+    game_state.attacks
     |> Player_map.map (fun attacks ->
       List.fold_right
         (fun attack ((atts, evts) as acc) ->
@@ -314,11 +314,11 @@ let transition_attacks (game_state : Game_state.t) =
         attacks
         ([], []))
   in
-  game_state.attacks := Player_map.map fst attacks_or_events;
-  Player_map.fold
-    (fun _id evts acc -> List.append evts acc)
-    (attacks_or_events |> Player_map.map snd)
-    []
+  ( { game_state with attacks = Player_map.map fst attacks_or_events }
+  , Player_map.fold
+      (fun _id evts acc -> List.append evts acc)
+      (attacks_or_events |> Player_map.map snd)
+      [] )
 ;;
 
 let create_attacks (game_state : Game_state.t) =
@@ -335,27 +335,28 @@ let create_attacks (game_state : Game_state.t) =
   |> Player_map.iter (fun _id p ->
     let ps = !(p.state) in
     p.state := { ps with intent = { ps.intent with attack = None } });
-  let prev_attacks = !(game_state.attacks) in
-  game_state.attacks
-  := Player_map.merge
-       (fun _id mprev mnew ->
-         match mprev, mnew with
-         | Some p, Some n -> Some (n :: p)
-         | Some p, None -> Some p
-         | None, Some n -> Some [ n ]
-         | None, None -> None)
-       prev_attacks
-       new_attacks;
   (* TODO: add "attacking player" events *)
-  []
+  let attacks =
+    Player_map.merge
+      (fun _id mprev mnew ->
+        match mprev, mnew with
+        | Some p, Some n -> Some (n :: p)
+        | Some p, None -> Some p
+        | None, Some n -> Some [ n ]
+        | None, None -> None)
+      game_state.attacks
+      new_attacks
+  in
+  { game_state with attacks }, []
 ;;
 
 let apply_intents game_state =
-  let _new_state, movement_events = move_players game_state in
-  let attack_events = transition_attacks game_state in
+  (* TODO: refactor *)
+  let game_state, movement_events = move_players game_state in
+  let game_state, attack_events = transition_attacks game_state in
   (* TODO: need attack event for player; with attack type? I guess so *)
-  let attack_fired_events = create_attacks game_state in
-  List.concat [ movement_events; attack_events; attack_fired_events ]
+  let game_state, attack_fired_events = create_attacks game_state in
+  game_state, List.concat [ movement_events; attack_events; attack_fired_events ]
 ;;
 
 let events_to_commands player events =
@@ -405,7 +406,7 @@ let step (game_state : Game_state.t) tick =
   (* TODO: do I _really_ need to have refs to the player_states? couldn't I just
      create the 'get_player_state' closures over the game state instead? *)
   (* If I had that, I could do most of this purely! *)
-  let events = apply_intents game_state in
+  let game_state, events = apply_intents game_state in
   let followup_events =
     events
     |> List.map (function
@@ -420,7 +421,7 @@ let step (game_state : Game_state.t) tick =
       | Player_event _ -> [])
     |> List.concat
   in
-  let new_state =
+  let game_state =
     List.fold_right
       (fun evt acc ->
         match evt with
@@ -439,5 +440,5 @@ let step (game_state : Game_state.t) tick =
   let all_events = List.append events followup_events in
   let player_commands = distribute_events tick all_events game_state in
   Player_map.iter (fun _id (p, commands) -> update_intent p commands) player_commands;
-  new_state
+  game_state
 ;;

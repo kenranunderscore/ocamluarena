@@ -43,5 +43,5 @@ let attacks renderer (attacks : Engine.attack_state list) =
 
 let scene renderer (game_state : Game_state.t) =
   players renderer game_state;
-  !(game_state.attacks) |> Player_map.iter (fun _id atts -> attacks renderer atts)
+  game_state.attacks |> Player_map.iter (fun _id atts -> attacks renderer atts)
 ;;

@@ -67,7 +67,12 @@ module Game_state = struct
     }
   ;;
 
-  (* find_first: here *)
+  let get_player id game_state =
+    (match Player_map.find_first_opt (( = ) id) game_state.living_players with
+     | Some player -> player
+     | None -> Player_map.find_first (( = ) id) game_state.dead_players)
+    |> snd
+  ;;
 end
 
 let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
@@ -99,20 +104,23 @@ let random_initial_state (game_state : Game_state.t) =
   { pos; heading; hp = 100; intent = default_intent }
 ;;
 
-let mk_state_reader (r : player_state ref) () =
-  let { pos; heading; hp; _ } = !r in
+let make_state_reader (id : Player.Id.t) (game_state : Game_state.t ref) () =
+  let player = Game_state.get_player id !game_state in
+  let { pos; heading; hp; _ } = !(player.state) in
   { Player.pos; heading; hp }
 ;;
 
-let add_player player_file (game_state : Game_state.t) =
-  let state = ref (random_initial_state game_state) in
-  let impl = Player.Lua.load player_file (mk_state_reader state) in
-  let data = { state; impl } in
+let add_player player_file (game_state : Game_state.t ref) =
   (* NOTE: assumes no players are dead *)
-  let new_id = 1 + (Player_map.bindings game_state.living_players |> List.length) in
-  { game_state with
-    living_players = Player_map.add (Player.Id.make new_id) data game_state.living_players
-  }
+  let gs = !game_state in
+  let new_id =
+    1 + (Player_map.bindings gs.living_players |> List.length) |> Player.Id.make
+  in
+  let state = ref (random_initial_state gs) in
+  let impl = Player.Lua.load player_file (make_state_reader new_id game_state) in
+  let data = { state; impl } in
+  game_state := { gs with living_players = Player_map.add new_id data gs.living_players };
+  game_state
 ;;
 
 let shuffle xs =
@@ -127,7 +135,8 @@ let start_new player_files =
   (* Printf.printf "started new game with random seed %i\n%!" seed; *)
   let shuffled = shuffle player_files in
   shuffled |> List.iter print_endline;
-  List.fold_right add_player (shuffle player_files) Game_state.initial
+  let game_state = ref Game_state.initial in
+  List.fold_right add_player (shuffle player_files) game_state
 ;;
 
 let round_over (game_state : Game_state.t) =

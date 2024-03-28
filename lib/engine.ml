@@ -403,19 +403,22 @@ let update_intent player_data commands =
 (* FIXME: define event order, and sort accordingly *)
 let distribute_events tick events (game_state : Game_state.t) =
   let all_events = Global_event (Tick tick) :: events in
-  let player_events =
-    (* TODO: propagate to all players? see find_first *)
+  (* TODO: propagate to all players? see find_first *)
+  let living_players =
     game_state.living_players
     |> Player_map.mapi (fun id p ->
-      ( p
-      , List.filter_map
+      let events =
+        List.filter_map
           (function
             | Global_event evt -> Some evt
             | Player_event (id', evt) when id' = id -> Some evt
             | Player_event _ -> None)
-          all_events ))
+          all_events
+      in
+      let commands = events_to_commands p.impl events in
+      update_intent p commands)
   in
-  Player_map.map (fun (p, events) -> p, events_to_commands p.impl events) player_events
+  { game_state with living_players }
 ;;
 
 type step_result =
@@ -470,9 +473,5 @@ let step (game_state : Game_state.t) tick =
       game_state
   in
   let all_events = List.append events death_events in
-  let player_commands = distribute_events tick all_events game_state in
-  let living_players =
-    Player_map.map (fun (p, commands) -> update_intent p commands) player_commands
-  in
-  { game_state with living_players }
+  distribute_events tick all_events game_state
 ;;

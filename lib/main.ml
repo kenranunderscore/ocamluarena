@@ -28,7 +28,9 @@ let main_loop renderer =
     then (
       quit := true;
       match Engine.round_winner !game_state with
-      | Some _winner -> print_endline "winnneeeeeeer"
+      | Some (_id, p) ->
+        let module M = (val p.impl : PLAYER) in
+        print_endline M.meta.name
       | None -> print_endline "it's a draw");
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;

@@ -21,6 +21,8 @@ module Player_map = struct
       m1
       m2
   ;;
+
+  let values m = bindings m |> List.map snd
 end
 
 type intent =
@@ -327,8 +329,7 @@ let transition_attacks (game_state : Game_state.t) =
                     ; Player_event (victim_id, Hit_by Attacker.meta.name)
                     ])
                   hits
-                |> Player_map.bindings
-                |> List.map snd
+                |> Player_map.values
                 |> List.concat
                 |> List.append evts ))
           else acc)
@@ -453,8 +454,7 @@ let transition_hitpoints events game_state =
     game_state.living_players
     |> Player_map.filter_map (fun id p ->
       if is_dead p.state then Some (Player_event (id, Death)) else None)
-    |> Player_map.bindings
-    |> List.map snd
+    |> Player_map.values
   in
   game_state, death_events
 ;;
@@ -476,10 +476,29 @@ let distribute_death_events events (game_state : Game_state.t) =
     game_state
 ;;
 
+let can_spot _player _other_player = true (* TODO *)
+
+let vision_events (game_state : Game_state.t) =
+  game_state.living_players
+  |> Player_map.mapi (fun id p ->
+    game_state.living_players
+    |> Player_map.filter_map (fun id' p' ->
+      if id != id' && can_spot p p'
+      then
+        let module M = (val p'.impl : PLAYER) in
+        Some (Player_event (id, Enemy_seen (M.meta.name, p'.state.pos)))
+      else None)
+    |> Player_map.values)
+  |> Player_map.values
+  |> List.concat
+;;
+
 let step (game_state : Game_state.t) tick =
-  let game_state, events = apply_intents game_state in
-  let game_state, death_events = transition_hitpoints events game_state in
+  (* smells like state monad *)
+  let enemy_seen_events = vision_events game_state in
+  let game_state, intent_events = apply_intents game_state in
+  let game_state, death_events = transition_hitpoints intent_events game_state in
   let game_state = distribute_death_events death_events game_state in
-  let all_events = List.append events death_events in
+  let all_events = List.concat [ intent_events; death_events; enemy_seen_events ] in
   distribute_events tick all_events game_state
 ;;

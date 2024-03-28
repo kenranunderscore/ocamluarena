@@ -29,7 +29,7 @@ let players renderer (game_state : Game_state.t) =
   game_state.living_players
   |> Player_map.iter (fun _id { Engine.state; impl } ->
     let module M = (val impl : PLAYER) in
-    player renderer M.meta !state)
+    player renderer M.meta state)
 ;;
 
 let attack renderer (attack : Engine.attack_state) =

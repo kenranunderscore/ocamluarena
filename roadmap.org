@@ -1,6 +1,7 @@
 #+STARTUP: showall
 
-* Roadmap to v0.1 [1/13]
+* Roadmap to v0.1 [1/14]
+
 - [ ] field of vision + events being filtered by that
 - [ ] attack cooldown(s)
 - [ ] multiple rounds
@@ -18,3 +19,4 @@
 - [ ] find a name!
 - [ ] docs! point to sample players, and document Lua API + usage
 - [ ] nixify
+- [ ] choose a license

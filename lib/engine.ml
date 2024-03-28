@@ -315,6 +315,7 @@ let transition_attacks (game_state : Game_state.t) =
               , Player_map.mapi
                   (fun victim_id p ->
                     let _, owner =
+                      (* FIXME: crashed here! *)
                       Player_map.find_first
                         (fun id -> id = attack.owner)
                         game_state.living_players
@@ -400,8 +401,8 @@ let update_intent player_data commands =
   { player_data with state = { state with intent = new_intent } }
 ;;
 
-(* FIXME: define event order, and sort accordingly *)
 let distribute_events tick events (game_state : Game_state.t) =
+  (* FIXME: define event order, and sort accordingly *)
   let all_events = Global_event (Tick tick) :: events in
   (* TODO: propagate to all players? see find_first *)
   let living_players =
@@ -426,8 +427,7 @@ type step_result =
   | Draw
   | Next_state of Game_state.t
 
-let step (game_state : Game_state.t) tick =
-  let game_state, events = apply_intents game_state in
+let transition_hitpoints events game_state =
   let game_state =
     List.fold_right
       (fun evt (acc : Game_state.t) ->
@@ -450,28 +450,36 @@ let step (game_state : Game_state.t) tick =
   in
   (* TODO: get state and events as single step *)
   let death_events =
-    Player_map.filter_map
-      (fun id p -> if is_dead p.state then Some (Player_event (id, Death)) else None)
-      game_state.living_players
+    game_state.living_players
+    |> Player_map.filter_map (fun id p ->
+      if is_dead p.state then Some (Player_event (id, Death)) else None)
     |> Player_map.bindings
     |> List.map snd
   in
-  let game_state =
-    List.fold_right
-      (fun evt acc ->
-        match evt with
-        | Player_event (id, Death) ->
-          let player =
-            game_state.living_players |> Player_map.find_first (( = ) id) |> snd
-          in
-          { game_state with
-            living_players = Player_map.remove id game_state.living_players
-          ; dead_players = Player_map.add id player game_state.dead_players
-          }
-        | _ -> acc)
-      death_events
-      game_state
-  in
+  game_state, death_events
+;;
+
+let distribute_death_events events (game_state : Game_state.t) =
+  List.fold_right
+    (fun evt acc ->
+      match evt with
+      | Player_event (id, Death) ->
+        let player =
+          game_state.living_players |> Player_map.find_first (( = ) id) |> snd
+        in
+        { game_state with
+          living_players = Player_map.remove id game_state.living_players
+        ; dead_players = Player_map.add id player game_state.dead_players
+        }
+      | _ -> acc)
+    events
+    game_state
+;;
+
+let step (game_state : Game_state.t) tick =
+  let game_state, events = apply_intents game_state in
+  let game_state, death_events = transition_hitpoints events game_state in
+  let game_state = distribute_death_events death_events game_state in
   let all_events = List.append events death_events in
   distribute_events tick all_events game_state
 ;;

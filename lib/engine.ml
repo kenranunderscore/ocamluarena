@@ -1,8 +1,14 @@
 let failwithf f = Printf.ksprintf failwith f
+let to_radians deg = deg *. Float.pi /. 180.
+
+(* TODO: settings? configurable? *)
 let arena_width = 1000.
 let arena_height = 800.
 let player_diameter = 50.
 let player_radius = player_diameter /. 2.
+let player_angle_of_vision = 0.9 *. Float.pi /. 2.
+let max_turn_rate = to_radians 5.
+let max_view_turn_rate = to_radians 10.
 
 (* TODO: property of the actual attack *)
 let attack_radius = 4.
@@ -27,15 +33,17 @@ end
 
 type intent =
   { distance : float
-  ; angle : float
+  ; turn_angle : float
+  ; view_angle : float
   ; attack : float option
   }
 
-let default_intent = { distance = 0.0; angle = 0.0; attack = None }
+let default_intent = { distance = 0.0; turn_angle = 0.0; view_angle = 0.0; attack = None }
 
 type player_state =
   { pos : Point.t
   ; heading : float
+  ; view_direction : float
   ; intent : intent
   ; hp : int
   }
@@ -103,13 +111,14 @@ let random_initial_state (game_state : Game_state.t) =
   in
   let pos = first_with random_pos is_valid in
   let heading = Random.float (2. *. Float.pi) in
-  { pos; heading; hp = 100; intent = default_intent }
+  let view_direction = Random.float (2. *. Float.pi) in
+  { pos; heading; view_direction; hp = 100; intent = default_intent }
 ;;
 
 let make_state_reader (id : Player.Id.t) (game_state : Game_state.t ref) () =
   let player = Game_state.get_player id !game_state in
-  let { pos; heading; hp; _ } = player.state in
-  { Player.pos; heading; hp }
+  let { pos; heading; hp; view_direction; _ } = player.state in
+  { Player.pos; heading; hp; view_direction }
 ;;
 
 let add_player player_file (game_state : Game_state.t ref) =
@@ -159,7 +168,6 @@ type movement_change =
   ; heading : float
   }
 
-let to_radians deg = deg *. Float.pi /. 180.
 let sign x = if Float.sign_bit x then -1. else 1.
 
 (* TODO: inline? *)
@@ -178,24 +186,30 @@ let calculate_new_pos (p : Point.t) heading velocity =
 let calculate_movement (p : Point.t) old_heading intent =
   let max_velocity = 1. in
   let velocity = Float.min intent.distance max_velocity in
-  let turn_rate = to_radians 5. in
-  let dangle = sign intent.angle *. Float.min turn_rate (Float.abs intent.angle) in
-  let angle = if Float.abs intent.angle < turn_rate then 0. else intent.angle +. dangle in
+  let dangle =
+    sign intent.turn_angle *. Float.min max_turn_rate (Float.abs intent.turn_angle)
+  in
+  let turn_angle =
+    if Float.abs intent.turn_angle < max_turn_rate
+    then 0.
+    else intent.turn_angle +. dangle
+  in
   let heading = old_heading +. dangle in
   let dx = sin heading *. velocity in
   let dy = -.(cos heading *. velocity) in
   let distance = Float.max 0. (intent.distance -. velocity) in
   let x, y = p.x +. dx, p.y +. dy in
   let position = Point.make ~x ~y in
-  let remaining_intent = { intent with distance; angle } in
+  let remaining_intent = { intent with distance; turn_angle } in
   { intent = remaining_intent; position; heading }
 ;;
 
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
     | Player.Move distance -> { intent with distance }
-    | Turn_right angle -> { intent with angle }
+    | Turn_right turn_angle -> { intent with turn_angle }
     | Attack heading -> { intent with attack = Some heading }
+    | Look_right view_angle -> { intent with view_angle }
   in
   List.fold_left apply_cmd old_intent cmds
 ;;
@@ -259,13 +273,34 @@ type targeted_event =
   | Global_event of event
   | Player_event of Player.Id.t * event
 
+(* TODO: decide:
+   - should this return vision events, or should these be decided AFTER movement?
+   - or should this just be called after movement _and_ return vision events?
+*)
+let move_heads (game_state : Game_state.t) =
+  let living_players =
+    game_state.living_players
+    |> Player_map.map (fun p ->
+      let intent = p.state.intent in
+      let abs_angle = Float.abs intent.view_angle in
+      let dangle = sign intent.view_angle *. Float.min max_view_turn_rate abs_angle in
+      let angle =
+        if abs_angle < max_view_turn_rate then 0. else intent.view_angle +. dangle
+      in
+      let intent = { intent with view_angle = angle } in
+      (* TODO: modify/set_FOO functions on game_state *)
+      let view_direction = p.state.view_direction +. dangle in
+      { p with state = { p.state with intent; view_direction } })
+  in
+  { game_state with living_players }, []
+;;
+
 (* TODO: move attacks or players first? *)
 let move_players game_state =
   let player_moves =
     game_state.living_players
-    |> Player_map.map (fun ({ state; impl } as p) ->
-      let module M = (val impl : PLAYER) in
-      let move = calculate_movement state.pos state.heading state.intent in
+    |> Player_map.map (fun p ->
+      let move = calculate_movement p.state.pos p.state.heading p.state.intent in
       p, move)
     |> Player_map.filter (fun id (_p, move) ->
       is_valid_position id move.position game_state)
@@ -375,11 +410,13 @@ let create_attacks (game_state : Game_state.t) =
 
 let apply_intents game_state =
   (* TODO: refactor *)
+  let game_state, vision_events = move_heads game_state in
   let game_state, movement_events = move_players game_state in
   let game_state, attack_events = transition_attacks game_state in
   (* TODO: need attack event for player; with attack type? I guess so *)
   let game_state, attack_fired_events = create_attacks game_state in
-  game_state, List.concat [ movement_events; attack_events; attack_fired_events ]
+  ( game_state
+  , List.concat [ vision_events; movement_events; attack_events; attack_fired_events ] )
 ;;
 
 let events_to_commands player events =
@@ -476,7 +513,16 @@ let distribute_death_events events (game_state : Game_state.t) =
     game_state
 ;;
 
-let can_spot _player _other_player = true (* TODO *)
+let can_spot player other_player =
+  let p = player.state.pos in
+  let q = other_player.state.pos in
+  let angle = Math.angle_between p q in
+  let view_direction = player.state.view_direction in
+  let dangle = player_angle_of_vision /. 2. in
+  let left = Math.normalize_angle (view_direction -. dangle) in
+  let right = Math.normalize_angle (view_direction +. dangle) in
+  left <= angle && angle <= right
+;;
 
 let vision_events (game_state : Game_state.t) =
   game_state.living_players

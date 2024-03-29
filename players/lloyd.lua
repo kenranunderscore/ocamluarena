@@ -7,13 +7,18 @@ m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
   if n % 12 == 0 then
-    me.log("pew")
-    return { me.attack(2.1) }
+    return {}
   end
 
   if n < 100 then
-    return { me.move(200), me.turn_right(0.02) }
+    return { me.move(2), me.turn_left(0.02) }
   end
+
+  return { me.move(1), me.turn_left(0.05), me.look_left(0.03) }
+end
+
+function m.on_enemy_seen(name, x, y)
+  me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
 end
 
 function m.on_enemy_seen(name, x, y)

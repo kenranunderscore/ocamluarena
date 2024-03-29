@@ -7,12 +7,13 @@ type command =
   | Move of float
   | Turn_right of float
   | Attack of float
-[@@deriving show]
+  | Look_right of float
 
 type player_info =
   { hp : int
   ; pos : Point.t
   ; heading : float
+  ; view_direction : float
   }
 
 module Id : sig

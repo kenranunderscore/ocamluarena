@@ -287,7 +287,7 @@ let move_heads (game_state : Game_state.t) =
       in
       let intent = { intent with view_angle = angle } in
       (* TODO: modify/set_FOO functions on game_state *)
-      let view_direction = p.state.view_direction +. dangle in
+      let view_direction = Math.normalize_angle (p.state.view_direction +. dangle) in
       { p with state = { p.state with intent; view_direction } })
   in
   { game_state with living_players }, []
@@ -507,13 +507,18 @@ let distribute_death_events events (game_state : Game_state.t) =
 let can_spot player other_player =
   let p = player.state.pos in
   let q = other_player.state.pos in
+  (* relative: -pi to pi *)
   let angle = Math.angle_between p q in
+  (* absolute 0 to pi *)
   let view_direction = player.state.view_direction in
   let dangle = player_angle_of_vision /. 2. in
-  let left = Math.normalize_angle (view_direction -. dangle) in
-  let right = Math.normalize_angle (view_direction +. dangle) in
+  let left = view_direction -. dangle in
+  let right = view_direction +. dangle in
   (* TODO: accommodate for player size/radius *)
-  left <= angle && angle <= right
+  (* TODO: simplify *)
+  Math.is_between angle left right
+  || Math.is_between (angle +. (2. *. Float.pi)) left right
+  || Math.is_between (angle -. (2. *. Float.pi)) left right
 ;;
 
 let vision_events (game_state : Game_state.t) =

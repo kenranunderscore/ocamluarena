@@ -4,6 +4,8 @@ let angle_between (p : Point.t) (q : Point.t) =
   Float.atan2 dy dx +. (Float.pi /. 2.)
 ;;
 
+let is_between x a b = a <= x && x <= b
+
 let normalize_angle angle =
   (* FIXME: do this purely and compare performance *)
   (* might also be wrong still *)

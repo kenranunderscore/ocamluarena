@@ -6,23 +6,16 @@ local m = {}
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
-  if n % 12 == 0 then
-    return {}
+  -- me.log("view direction = " .. me.view_direction())
+  if n % 20 == 0 then
+    return { me.move(1), me.turn_right(0.05), me.look_right(0.03), me.attack(n) }
+  else
+    return { me.move(1), me.turn_right(0.05), me.look_right(0.03) }
   end
-
-  if n < 100 then
-    return { me.move(2), me.turn_left(0.02) }
-  end
-
-  return { me.move(1), me.turn_left(0.05), me.look_left(0.03) }
 end
 
 function m.on_enemy_seen(name, x, y)
-  me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
-end
-
-function m.on_enemy_seen(name, x, y)
-  me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
+  me.log("enemy seen")
 end
 
 function m.on_attack_hit(name, x, y)

@@ -186,7 +186,7 @@ module Lua = struct
         , fun l ->
             Lua.pushnumber l (get_player_info ()).heading;
             1 )
-      ; ( "view_angle"
+      ; ( "view_direction"
         , fun l ->
             Lua.pushnumber l (get_player_info ()).view_direction;
             1 )

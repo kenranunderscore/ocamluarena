@@ -9,7 +9,7 @@ type command =
   | Move of float
   | Turn_right of float
   | Attack of float
-[@@deriving show]
+  | Look_right of float
 
 module Id = struct
   include Int
@@ -30,6 +30,7 @@ type player_info =
   { hp : int
   ; pos : Point.t
   ; heading : float
+  ; view_direction : float
   }
 
 module Lua = struct
@@ -185,6 +186,10 @@ module Lua = struct
         , fun l ->
             Lua.pushnumber l (get_player_info ()).heading;
             1 )
+      ; ( "view_direction"
+        , fun l ->
+            Lua.pushnumber l (get_player_info ()).view_direction;
+            1 )
       ; ( "hp"
         , fun l ->
             Lua.pushinteger l (get_player_info ()).hp;
@@ -212,6 +217,18 @@ module Lua = struct
             let angle = Lua.tonumber l (-1) in
             Lua.pop l 1;
             Lua.newuserdata l (Turn_right (-.angle));
+            1 )
+      ; ( "look_right"
+        , fun l ->
+            let angle = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Look_right angle);
+            1 )
+      ; ( "look_left"
+        , fun l ->
+            let angle = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Look_right (-.angle));
             1 )
       ; ( "log"
         , fun l ->

@@ -113,6 +113,13 @@ let[@inline] draw_line renderer (p : Point.t) (q : Point.t) =
   Tsdl.Sdl.render_draw_line_f renderer p.x p.y q.x q.y |> unwrap_sdl
 ;;
 
+let draw_line_in_direction renderer (p : Point.t) angle length =
+  (* TODO: intersection with arena borders *)
+  let x = p.x +. (length *. Float.sin angle) in
+  let y = p.y -. (length *. Float.cos angle) in
+  draw_line renderer p (Point.make ~x ~y)
+;;
+
 let[@inline] scale renderer factor =
   Tsdl.Sdl.render_set_scale renderer factor factor |> unwrap_sdl
 ;;

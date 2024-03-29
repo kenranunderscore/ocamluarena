@@ -3,11 +3,18 @@ local m = {}
 m.meta = { name = "Kai", color = { red = 255, green = 10, blue = 10 } }
 
 function m.on_tick(n)
-  return { me.move(1) }
+  if n % 10 == 0 then
+    -- return { me.move(5), me.attack(n / 50), me.look_left(0.05) }
+    return { me.move(5), me.look_left(0.05), me.attack(n / 50) }
+  end
+
+  if n % 21 == 0 then
+    me.log("tick")
+  end
 end
 
 function m.on_enemy_seen(name, x, y)
-  me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
+  -- me.log("enemy " .. name .. " seen at (" .. x .. ", " .. y .. ")")
 end
 
 function m.on_attack_hit(name, x, y)

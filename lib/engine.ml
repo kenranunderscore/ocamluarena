@@ -63,7 +63,6 @@ type attack_state =
   }
 
 module Game_state = struct
-  (* TODO: get rid of refs everywhere; see FIXME/TODO below *)
   type t =
     { living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
@@ -174,7 +173,7 @@ let sign x = if Float.sign_bit x then -1. else 1.
 
 let circles_intersect (p1 : Point.t) r1 (p2 : Point.t) r2 = Point.dist p1 p2 <= r1 +. r2
 
-(* FIXME: pull out common movement logic *)
+(* TODO: pull out common movement logic *)
 
 let calculate_new_pos (p : Point.t) heading velocity =
   let dx = sin heading *. velocity in
@@ -440,7 +439,7 @@ let update_intent player_data commands =
 ;;
 
 let distribute_events tick events (game_state : Game_state.t) =
-  (* FIXME: define event order, and sort accordingly *)
+  (* TODO: define event order, and sort accordingly *)
   let all_events = Global_event (Tick tick) :: events in
   (* TODO: propagate to all players? see find_first *)
   let living_players =
@@ -502,6 +501,7 @@ let distribute_death_events events (game_state : Game_state.t) =
       match evt with
       | Player_event (id, Death) ->
         let player =
+          (* FIXME: also crashing here *)
           game_state.living_players |> Player_map.find_first (( = ) id) |> snd
         in
         { game_state with
@@ -521,6 +521,7 @@ let can_spot player other_player =
   let dangle = player_angle_of_vision /. 2. in
   let left = Math.normalize_angle (view_direction -. dangle) in
   let right = Math.normalize_angle (view_direction +. dangle) in
+  (* TODO: accommodate for player size/radius *)
   left <= angle && angle <= right
 ;;
 

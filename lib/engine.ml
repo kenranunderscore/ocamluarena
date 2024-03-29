@@ -77,10 +77,9 @@ module Game_state = struct
   ;;
 
   let get_player id game_state =
-    (match Player_map.find_first_opt (( = ) id) game_state.living_players with
-     | Some player -> player
-     | None -> Player_map.find_first (( = ) id) game_state.dead_players)
-    |> snd
+    match Player_map.find_opt id game_state.living_players with
+    | Some player -> player
+    | None -> Player_map.find id game_state.dead_players
   ;;
 end
 
@@ -350,12 +349,7 @@ let transition_attacks (game_state : Game_state.t) =
               ( atts
               , Player_map.mapi
                   (fun victim_id p ->
-                    let _, owner =
-                      (* FIXME: crashed here! *)
-                      Player_map.find_first
-                        (fun id -> id = attack.owner)
-                        game_state.living_players
-                    in
+                    let owner = Player_map.find attack.owner game_state.living_players in
                     let module Victim = (val p.impl : PLAYER) in
                     let module Attacker = (val owner.impl : PLAYER) in
                     [ Player_event
@@ -500,10 +494,7 @@ let distribute_death_events events (game_state : Game_state.t) =
     (fun evt acc ->
       match evt with
       | Player_event (id, Death) ->
-        let player =
-          (* FIXME: also crashing here *)
-          game_state.living_players |> Player_map.find_first (( = ) id) |> snd
-        in
+        let player = game_state.living_players |> Player_map.find id in
         { game_state with
           living_players = Player_map.remove id game_state.living_players
         ; dead_players = Player_map.add id player game_state.dead_players

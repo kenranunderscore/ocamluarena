@@ -8,6 +8,9 @@ type command =
   | Turn_right of float
   | Attack of float
   | Look_right of float
+[@@deriving show]
+
+val command_index : command -> int
 
 type player_info =
   { hp : int

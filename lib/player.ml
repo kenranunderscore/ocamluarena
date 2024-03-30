@@ -10,6 +10,14 @@ type command =
   | Turn_right of float
   | Attack of float
   | Look_right of float
+[@@deriving show]
+
+let command_index = function
+  | Move _ -> 0
+  | Turn_right _ -> 1
+  | Attack _ -> 2
+  | Look_right _ -> 3
+;;
 
 module Id = struct
   include Int

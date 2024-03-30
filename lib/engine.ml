@@ -158,7 +158,16 @@ let round_winner (game_state : Game_state.t) =
 
 (* TODO: implement: take the 'latest' (according to event order?) command of
    each type *)
-let reduce_commands commands = commands
+let reduce_commands commands =
+  let rec reduce = function
+    | [] -> []
+    | h :: t ->
+      h
+      :: (reduce
+          @@ List.filter (fun x -> Player.command_index x <> Player.command_index h) t)
+  in
+  reduce (List.rev commands)
+;;
 
 type movement_change =
   { intent : intent
@@ -225,7 +234,7 @@ let is_valid_position
   let would_hit_other_player =
     game_state.living_players
     |> Player_map.exists (fun id { state; _ } ->
-      player_id != id && players_collide p state.pos)
+      player_id <> id && players_collide p state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;
@@ -266,6 +275,14 @@ type event =
   | Attack_hit of string * Point.t
   | Hit_by of string
   | Death
+
+let event_index = function
+  | Tick _ -> 0
+  | Enemy_seen _ -> 1
+  | Attack_hit _ -> 2
+  | Hit_by _ -> 3
+  | Death -> 4
+;;
 
 type targeted_event =
   | Global_event of event
@@ -412,8 +429,11 @@ let apply_intents game_state =
   , List.concat [ vision_events; movement_events; attack_events; attack_fired_events ] )
 ;;
 
+(* TODO: invariant:
+
+   in on_enemy_seen, make sure the data returned by me.pos(), me.x(),
+   me.heading() etc. is from the same tick as the enemy information *)
 let events_to_commands player events =
-  (* TODO: ordering? *)
   let module M = (val player : PLAYER) in
   events
   |> List.concat_map (function
@@ -432,23 +452,25 @@ let update_intent player_data commands =
   { player_data with state = { state with intent = new_intent } }
 ;;
 
+let sort_events events =
+  let comp e1 e2 = compare (event_index e1) (event_index e2) in
+  events |> List.sort comp
+;;
+
 let distribute_events tick events (game_state : Game_state.t) =
-  (* TODO: define event order, and sort accordingly *)
   let all_events = Global_event (Tick tick) :: events in
-  (* TODO: propagate to all players? see find_first *)
   let living_players =
     game_state.living_players
     |> Player_map.mapi (fun id p ->
-      let events =
-        List.filter_map
-          (function
-            | Global_event evt -> Some evt
-            | Player_event (id', evt) when id' = id -> Some evt
-            | Player_event _ -> None)
-          all_events
-      in
-      let commands = events_to_commands p.impl events in
-      update_intent p commands)
+      all_events
+      |> List.filter_map (function
+        | Global_event evt -> Some evt
+        | Player_event (id', evt) when id' = id -> Some evt
+        | Player_event _ -> None)
+      |> sort_events
+      |> events_to_commands p.impl
+      |> reduce_commands
+      |> update_intent p)
   in
   { game_state with living_players }
 ;;
@@ -526,7 +548,7 @@ let vision_events (game_state : Game_state.t) =
   |> Player_map.mapi (fun id p ->
     game_state.living_players
     |> Player_map.filter_map (fun id' p' ->
-      if id != id' && can_spot p p'
+      if id <> id' && can_spot p p'
       then
         let module M = (val p'.impl : PLAYER) in
         Some (Player_event (id, Enemy_seen (M.meta.name, p'.state.pos)))

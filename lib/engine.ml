@@ -136,11 +136,8 @@ let shuffle xs =
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
-let start_new player_files =
-  (* TODO: random initial seed *)
-  (* let seed = Random.bits () in *)
-  (* Random.init seed; *)
-  Random.self_init ();
+let start_new player_files seed =
+  Random.init seed;
   (* Printf.printf "started new game with random seed %i\n%!" seed; *)
   let shuffled = shuffle player_files in
   shuffled |> List.iter print_endline;

@@ -1,7 +1,7 @@
 module type PLAYER = Player.PLAYER
 
-module Player_map = Engine.Player_map
-module Game_state = Engine.Game_state
+module Player_map = Game.Player_map
+module State = Game.State
 
 let global_scale = 2.0
 
@@ -12,7 +12,7 @@ let main_loop renderer =
   (* FIXME: degrade gracefully when players cannot be loaded *)
   Random.self_init ();
   let seed = Random.bits () in
-  let game_state = Engine.start_new [ "lloyd.lua"; "kai.lua" ] seed in
+  let game_state = Game.start_new [ "lloyd.lua"; "kai.lua" ] seed in
   Sdl.scale renderer global_scale;
   while not !quit do
     tick := !tick + 1;
@@ -25,11 +25,11 @@ let main_loop renderer =
          | _ -> ())
       | _ -> ()
     done;
-    game_state := Engine.step !game_state !tick;
-    if Engine.round_over !game_state
+    game_state := Game.step !game_state !tick;
+    if Game.round_over !game_state
     then (
       quit := true;
-      match Engine.round_winner !game_state with
+      match Game.round_winner !game_state with
       | Some (_id, p) ->
         let module M = (val p.impl : PLAYER) in
         print_endline M.meta.name
@@ -45,8 +45,8 @@ let main_loop renderer =
 let main () =
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
-      ~w:(Int.of_float @@ (global_scale *. Engine.arena_width))
-      ~h:(Int.of_float @@ (global_scale *. Engine.arena_height))
+      ~w:(Int.of_float @@ (global_scale *. Game.arena_width))
+      ~h:(Int.of_float @@ (global_scale *. Game.arena_height))
       "Arena"
       (fun _window renderer -> main_loop renderer))
 ;;

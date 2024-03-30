@@ -6,11 +6,10 @@ local m = {}
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
-  -- me.log("view direction = " .. me.view_direction())
   if n % 20 == 0 then
     return { me.move(1), me.turn_right(0.05), me.look_right(0.03), me.attack(n) }
   else
-    return { me.move(1), me.turn_right(0.05), me.look_right(0.03) }
+    return { me.move(1), me.turn_right(0.05), me.look_right(0.03), me.attack(4) }
   end
 end
 

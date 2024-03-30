@@ -12,6 +12,7 @@ let max_view_turn_rate = to_radians 10.
 
 (* TODO: property of the actual attack *)
 let attack_radius = 4.
+let attack_cooldown = 35
 
 module type PLAYER = Player.PLAYER
 
@@ -45,6 +46,7 @@ type player_state =
   ; heading : float
   ; view_direction : float
   ; intent : intent
+  ; attack_cooldown : int
   ; hp : int
   }
 
@@ -110,7 +112,7 @@ let random_initial_state (state : State.t) =
   let pos = first_with random_pos is_valid in
   let heading = Random.float (2. *. Float.pi) in
   let view_direction = Random.float (2. *. Float.pi) in
-  { pos; heading; view_direction; hp = 100; intent = default_intent }
+  { pos; heading; view_direction; hp = 100; intent = default_intent; attack_cooldown = 0 }
 ;;
 
 let make_state_reader (id : Player.Id.t) (state : State.t ref) () =
@@ -380,15 +382,31 @@ let transition_attacks (state : State.t) =
 ;;
 
 let create_attacks (state : State.t) =
-  let new_attacks =
+  let players_with_attacks =
     state.living_players
-    |> Player_map.filter_map (fun id p ->
-      Option.map
-        (fun heading -> { origin = p.state.pos; owner = id; pos = p.state.pos; heading })
-        p.state.intent.attack)
+    |> Player_map.mapi (fun id p ->
+      match p.state.intent.attack with
+      | Some heading when p.state.attack_cooldown = 0 ->
+        let attack = { origin = p.state.pos; owner = id; pos = p.state.pos; heading } in
+        ( { p with
+            state =
+              { p.state with
+                intent = { p.state.intent with attack = None }
+              ; attack_cooldown
+              }
+          }
+        , Some attack )
+      | Some _ | None ->
+        ( { p with
+            state =
+              { p.state with attack_cooldown = Int.max 0 (p.state.attack_cooldown - 1) }
+          }
+        , None ))
   in
   (* TODO: add "attacking player" events *)
   (* TODO: add state function to add attacks *)
+  let new_attacks = players_with_attacks |> Player_map.filter_map (fun _id x -> snd x) in
+  let living_players = players_with_attacks |> Player_map.map fst in
   let attacks =
     Player_map.merge
       (fun _id mprev mnew ->
@@ -399,12 +417,6 @@ let create_attacks (state : State.t) =
         | None, None -> None)
       state.attacks
       new_attacks
-  in
-  let living_players =
-    state.living_players
-    |> Player_map.map (fun p ->
-      let intent = { p.state.intent with attack = None } in
-      { p with state = { p.state with intent } })
   in
   { state with attacks; living_players }, []
 ;;

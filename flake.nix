@@ -31,6 +31,7 @@
               pkgs.lua5_1
               pkgs.pkg-config
             ];
+            doCheck = true;
 
             meta.mainProgram = "arena";
           };

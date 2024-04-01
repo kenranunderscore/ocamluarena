@@ -24,6 +24,7 @@
               ocamlPackages.tsdl-image
               ocamlPackages.ppxlib
               ocamlPackages.ppx_deriving
+              ocamlPackages.alcotest
               pkgs.SDL2
               pkgs.SDL2_image
               pkgs.libffi

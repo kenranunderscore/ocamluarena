@@ -1,2 +1,6 @@
+# OCaml
 _build/
 _opam/
+
+# Nix result symlinks
+/result*

@@ -88,7 +88,7 @@ end
 let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
 
 let inside_arena { Point.x; y } =
-  x >= 0. && x <= arena_width && y >= 0. && y <= arena_height
+  Math.is_between x 0. arena_width && Math.is_between y 0. arena_height
 ;;
 
 let rec first_with f pred =
@@ -167,14 +167,7 @@ type movement_change =
   ; heading : float
   }
 
-let sign x = if Float.sign_bit x then -1. else 1.
-
-(* TODO: inline? *)
-
-let circles_intersect (p1 : Point.t) r1 (p2 : Point.t) r2 = Point.dist p1 p2 <= r1 +. r2
-
 (* TODO: pull out common movement logic *)
-
 let calculate_new_pos (p : Point.t) heading velocity =
   let dx = sin heading *. velocity in
   let dy = -.(cos heading *. velocity) in
@@ -186,7 +179,7 @@ let calculate_movement (p : Point.t) old_heading intent =
   let max_velocity = 1. in
   let velocity = Float.min intent.distance max_velocity in
   let dangle =
-    sign intent.turn_angle *. Float.min max_turn_rate (Float.abs intent.turn_angle)
+    Math.sign intent.turn_angle *. Float.min max_turn_rate (Float.abs intent.turn_angle)
   in
   let turn_angle =
     if Float.abs intent.turn_angle < max_turn_rate
@@ -290,7 +283,9 @@ let move_heads (state : State.t) =
     |> Player_map.map (fun p ->
       let intent = p.state.intent in
       let abs_angle = Float.abs intent.view_angle in
-      let dangle = sign intent.view_angle *. Float.min max_view_turn_rate abs_angle in
+      let dangle =
+        Math.sign intent.view_angle *. Float.min max_view_turn_rate abs_angle
+      in
       let angle =
         if abs_angle < max_view_turn_rate then 0. else intent.view_angle +. dangle
       in
@@ -337,7 +332,7 @@ let players_hit attack players =
   players
   |> Player_map.filter (fun id player ->
     id <> attack.owner
-    && circles_intersect player.state.pos player_radius attack.pos attack_radius)
+    && Math.circles_intersect player.state.pos player_radius attack.pos attack_radius)
 ;;
 
 let transition_attacks (state : State.t) =

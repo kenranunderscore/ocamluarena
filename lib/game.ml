@@ -150,8 +150,6 @@ let start_new player_files seed =
 let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
 let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
-(* TODO: implement: take the 'latest' (according to event order?) command of
-   each type *)
 let reduce_commands commands =
   let rec reduce = function
     | [] -> []

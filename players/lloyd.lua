@@ -13,7 +13,9 @@ function m.on_tick(n)
   end
 end
 
-function m.on_enemy_seen(name, x, y) end
+function m.on_enemy_seen(name, x, y)
+  me.log("seen")
+end
 
 function m.on_attack_hit(name, x, y)
   me.log("enemy " .. name .. " HIT at (" .. x .. ", " .. y .. ")")

@@ -1,5 +1,4 @@
 let failwithf f = Printf.ksprintf failwith f
-let to_radians deg = deg *. Float.pi /. 180.
 
 (* TODO: settings? configurable? *)
 let arena_width = 1000.
@@ -7,8 +6,8 @@ let arena_height = 800.
 let player_diameter = 50.
 let player_radius = player_diameter /. 2.
 let player_angle_of_vision = 0.9 *. Float.pi /. 2.
-let max_turn_rate = to_radians 5.
-let max_view_turn_rate = to_radians 10.
+let max_turn_rate = Math.to_radians 5.
+let max_view_turn_rate = Math.to_radians 10.
 
 (* TODO: property of the actual attack *)
 let attack_radius = 4.
@@ -291,7 +290,9 @@ let move_heads (state : State.t) =
       in
       let intent = { intent with view_angle = angle } in
       (* TODO: modify/set_FOO functions on state *)
-      let view_direction = Math.normalize_angle (p.state.view_direction +. dangle) in
+      let view_direction =
+        Math.normalize_absolute_angle (p.state.view_direction +. dangle)
+      in
       { p with state = { p.state with intent; view_direction } })
   in
   { state with living_players }, []
@@ -522,21 +523,18 @@ let distribute_death_events events (state : State.t) =
     state
 ;;
 
-let can_spot player other_player =
-  let p = player.state.pos in
-  let q = other_player.state.pos in
-  (* relative: -pi to pi *)
-  let angle = Math.angle_between p q in
-  (* absolute 0 to pi *)
-  let view_direction = player.state.view_direction in
+let can_spot p view_direction q =
   let dangle = player_angle_of_vision /. 2. in
   let left = view_direction -. dangle in
   let right = view_direction +. dangle in
-  (* TODO: accommodate for player size/radius *)
-  (* TODO: simplify *)
-  Math.is_between angle left right
-  || Math.is_between (angle +. (2. *. Float.pi)) left right
-  || Math.is_between (angle -. (2. *. Float.pi)) left right
+  let d = Point.dist p q in
+  let alpha = Float.atan (player_radius /. d) in
+  let angle = Math.normalize_absolute_angle (Math.angle_between p q) in
+  let alpha_left = angle -. alpha in
+  let alpha_right = angle +. alpha in
+  Math.is_between alpha_left left right
+  || Math.is_between alpha_right left right
+  || (alpha_left <= left && alpha_right >= right)
 ;;
 
 let vision_events (state : State.t) =
@@ -544,7 +542,7 @@ let vision_events (state : State.t) =
   |> Player_map.mapi (fun id p ->
     state.living_players
     |> Player_map.filter_map (fun id' p' ->
-      if id <> id' && can_spot p p'
+      if id <> id' && can_spot p.state.pos p.state.view_direction p'.state.pos
       then
         let module M = (val p'.impl : PLAYER) in
         Some (Player_event (id, Enemy_seen (M.meta.name, p'.state.pos)))

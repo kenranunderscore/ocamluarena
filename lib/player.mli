@@ -3,8 +3,15 @@ type meta =
   ; color : Color.t
   }
 
+type movement_direction =
+  | Forward
+  | Backward
+  | Left
+  | Right
+[@@deriving show]
+
 type command =
-  | Move of float
+  | Move of movement_direction * float
   | Turn_right of float
   | Attack of float
   | Look_right of float

@@ -5,8 +5,15 @@ type meta =
   ; color : Color.t
   }
 
+type movement_direction =
+  | Forward
+  | Backward
+  | Left
+  | Right
+[@@deriving show]
+
 type command =
-  | Move of float
+  | Move of movement_direction * float
   | Turn_right of float
   | Attack of float
   | Look_right of float
@@ -202,11 +209,29 @@ module Lua = struct
         , fun l ->
             Lua.pushinteger l (get_player_info ()).hp;
             1 )
-      ; ( "move"
+      ; ( "move_forward"
         , fun l ->
             let distance = Lua.tonumber l (-1) in
             Lua.pop l 1;
-            Lua.newuserdata l (Move distance);
+            Lua.newuserdata l (Move (Forward, distance));
+            1 )
+      ; ( "move_backward"
+        , fun l ->
+            let distance = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Move (Backward, distance));
+            1 )
+      ; ( "move_left"
+        , fun l ->
+            let distance = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Move (Left, distance));
+            1 )
+      ; ( "move_right"
+        , fun l ->
+            let distance = Lua.tonumber l (-1) in
+            Lua.pop l 1;
+            Lua.newuserdata l (Move (Right, distance));
             1 )
       ; ( "attack"
         , fun l ->

@@ -31,14 +31,27 @@ module Player_map = struct
   let values m = bindings m |> List.map snd
 end
 
-type intent =
+type movement_intent =
   { distance : float
+  ; direction : Player.movement_direction
+  }
+
+let default_movement_intent = { distance = 0.0; direction = Forward }
+
+type intent =
+  { movement : movement_intent
   ; turn_angle : float
   ; view_angle : float
   ; attack : float option
   }
 
-let default_intent = { distance = 0.0; turn_angle = 0.0; view_angle = 0.0; attack = None }
+let default_intent =
+  { movement = default_movement_intent
+  ; turn_angle = 0.0
+  ; view_angle = 0.0
+  ; attack = None
+  }
+;;
 
 type player_state =
   { pos : Point.t
@@ -176,7 +189,7 @@ let calculate_new_pos (p : Point.t) heading velocity =
 
 let calculate_movement (p : Point.t) old_heading intent =
   let max_velocity = 1. in
-  let velocity = Float.min intent.distance max_velocity in
+  let velocity = Float.min intent.movement.distance max_velocity in
   let dangle =
     Math.sign intent.turn_angle *. Float.min max_turn_rate (Float.abs intent.turn_angle)
   in
@@ -186,18 +199,28 @@ let calculate_movement (p : Point.t) old_heading intent =
     else intent.turn_angle +. dangle
   in
   let heading = old_heading +. dangle in
-  let dx = sin heading *. velocity in
-  let dy = -.(cos heading *. velocity) in
-  let distance = Float.max 0. (intent.distance -. velocity) in
+  let dir_heading =
+    match intent.movement.direction with
+    | Player.Forward -> 0.
+    | Backward -> Float.pi
+    | Left -> -.Float.pi /. 2.
+    | Right -> Float.pi /. 2.
+  in
+  let movement_heading = heading +. dir_heading in
+  let dx = sin movement_heading *. velocity in
+  let dy = -.(cos movement_heading *. velocity) in
+  let distance = Float.max 0. (intent.movement.distance -. velocity) in
+  let movement_intent = { distance; direction = intent.movement.direction } in
   let x, y = p.x +. dx, p.y +. dy in
   let position = Point.make ~x ~y in
-  let remaining_intent = { intent with distance; turn_angle } in
+  let remaining_intent = { intent with movement = movement_intent; turn_angle } in
   { intent = remaining_intent; position; heading }
 ;;
 
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
-    | Player.Move distance -> { intent with distance }
+    | Player.Move (direction, distance) ->
+      { intent with movement = { distance; direction } }
     | Turn_right turn_angle -> { intent with turn_angle }
     | Attack heading -> { intent with attack = Some heading }
     | Look_right view_angle -> { intent with view_angle }
@@ -301,6 +324,8 @@ let move_heads (state : State.t) =
 (* TODO: move attacks or players first? *)
 let move_players state =
   let player_moves =
+    (* FIXME: make sure the intent is _never_ lost due to players being filtered
+       out here *)
     state.living_players
     |> Player_map.map (fun p ->
       let move = calculate_movement p.state.pos p.state.heading p.state.intent in

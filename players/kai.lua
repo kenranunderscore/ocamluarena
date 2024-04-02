@@ -4,8 +4,7 @@ m.meta = { name = "Kai", color = { red = 255, green = 10, blue = 10 } }
 
 function m.on_tick(n)
   if n % 10 == 0 then
-    -- return { me.move(5), me.attack(n / 50), me.look_left(0.05) }
-    return { me.move(5), me.look_left(0.05), me.attack(n / 50) }
+    return { me.move_forward(5), me.look_left(0.05), me.attack(n / 50) }
   end
 
   if n % 21 == 0 then

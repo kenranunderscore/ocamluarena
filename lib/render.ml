@@ -10,11 +10,11 @@ module type PLAYER = Player.PLAYER
 
 let heading renderer (p : Point.t) h =
   let len = Game.player_radius +. 10. in
-  let x = p.x +. (len *. Float.sin h) in
-  let y = p.y -. (len *. Float.cos h) in
-  let dest = Point.make ~x ~y in
   Sdl.set_render_draw_color renderer ~red:10 ~green:250 ~blue:50;
-  Sdl.draw_line renderer p dest
+  Sdl.draw_line_in_direction renderer p h len;
+  Sdl.draw_line_in_direction renderer p (h +. Float.pi) Game.player_radius;
+  Sdl.draw_line_in_direction renderer p (h +. (Float.pi /. 2.)) Game.player_radius;
+  Sdl.draw_line_in_direction renderer p (h -. (Float.pi /. 2.)) Game.player_radius
 ;;
 
 let view_angle renderer (p : Point.t) angle =

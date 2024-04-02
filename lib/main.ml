@@ -38,7 +38,7 @@ let main_loop renderer =
     Sdl.render_clear renderer;
     Render.scene renderer !game_state;
     Sdl.render_present renderer;
-    Thread.delay 0.01
+    Thread.delay 0.05
   done
 ;;
 

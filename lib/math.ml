@@ -13,9 +13,6 @@ let angle_between (p : Point.t) (q : Point.t) =
 ;;
 
 let normalize_absolute_angle angle =
-  (* TODO: use this as an example for checking out testing in OCaml *)
-  (* FIXME: do this purely and compare performance *)
-  (* might also be wrong still *)
   let res = ref angle in
   while !res >= 2. *. Float.pi do
     res := !res -. (2. *. Float.pi)
@@ -26,16 +23,9 @@ let normalize_absolute_angle angle =
   !res
 ;;
 
-let normalize_relative_angle angle =
-  (* TODO: use this as an example for checking out testing in OCaml *)
-  (* FIXME: do this purely and compare performance *)
-  (* might also be wrong still *)
-  let res = ref angle in
-  while !res >= Float.pi do
-    res := !res -. Float.pi
-  done;
-  while !res < -.Float.pi do
-    res := !res +. Float.pi
-  done;
-  !res
+let normalize_relative_angle = function
+  | angle when angle >= 0. && angle < Float.pi -> angle
+  | angle ->
+    let abs = normalize_absolute_angle angle in
+    if abs >= Float.pi then abs -. (2. *. Float.pi) else abs
 ;;

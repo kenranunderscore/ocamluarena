@@ -45,6 +45,7 @@
               ocamlPackages.ocaml-lsp
               ocamlPackages.merlin
               ocamlPackages.ocamlformat
+              ocamlPackages.utop
             ];
           };
         };

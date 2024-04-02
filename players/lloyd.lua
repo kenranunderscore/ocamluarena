@@ -7,13 +7,18 @@ m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
 function m.on_tick(n)
   if n % 20 == 0 then
-    return { me.move_left(1), me.turn_right(0.05), me.look_right(0.03), me.attack(n) }
+    return { me.move_left(1), me.turn_right(0.05), me.look_right(0.03) }
   else
-    return { me.move_backward(1), me.turn_right(0.05), me.look_right(0.03), me.attack(4) }
+    return { me.move_backward(1), me.turn_right(0.05), me.look_right(0.03) }
   end
 end
 
-function m.on_enemy_seen(name, x, y) end
+function m.on_enemy_seen(name, x, y)
+  me.log("I've spotted " .. name .. ", so let's shoot them")
+  angle = math.atan2(y - me.y(), x - me.x()) + math.pi / 2
+  me.log("angle = " .. angle)
+  return { me.attack(angle) }
+end
 
 function m.on_attack_hit(name, x, y)
   me.log("enemy " .. name .. " HIT at (" .. x .. ", " .. y .. ")")

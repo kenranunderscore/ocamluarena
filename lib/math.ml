@@ -1,3 +1,4 @@
+let two_pi = 2. *. Float.pi
 let sign x = if Float.sign_bit x then -1. else 1.
 let is_between x a b = a <= x && x <= b
 let to_radians deg = deg *. Float.pi /. 180.
@@ -12,20 +13,15 @@ let angle_between (p : Point.t) (q : Point.t) =
   Float.atan2 dy dx +. (Float.pi /. 2.)
 ;;
 
-let normalize_absolute_angle angle =
-  let res = ref angle in
-  while !res >= 2. *. Float.pi do
-    res := !res -. (2. *. Float.pi)
-  done;
-  while !res < 0. do
-    res := !res +. (2. *. Float.pi)
-  done;
-  !res
+let rec normalize_absolute_angle = function
+  | angle when angle >= two_pi -> normalize_absolute_angle (angle -. two_pi)
+  | angle when angle < 0. -> normalize_absolute_angle (angle +. two_pi)
+  | angle -> angle
 ;;
 
 let normalize_relative_angle = function
   | angle when angle >= 0. && angle < Float.pi -> angle
   | angle ->
     let abs = normalize_absolute_angle angle in
-    if abs >= Float.pi then abs -. (2. *. Float.pi) else abs
+    if abs >= Float.pi then abs -. two_pi else abs
 ;;

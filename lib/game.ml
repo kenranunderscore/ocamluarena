@@ -109,8 +109,8 @@ let random_initial_state (state : State.t) =
          state.living_players)
   in
   let pos = first_with random_pos is_valid in
-  let heading = Random.float (2. *. Float.pi) in
-  let view_direction = Random.float (2. *. Float.pi) in
+  let heading = Random.float Math.two_pi in
+  let view_direction = Random.float Math.two_pi in
   { pos; heading; view_direction; hp = 100; intent = default_intent; attack_cooldown = 0 }
 ;;
 

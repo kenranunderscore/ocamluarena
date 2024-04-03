@@ -5,7 +5,7 @@ let arena_width = 1000.
 let arena_height = 800.
 let player_diameter = 50.
 let player_radius = player_diameter /. 2.
-let player_angle_of_vision = 0.9 *. Float.pi /. 2.
+let player_angle_of_vision = 0.9 *. Math.half_pi
 let max_turn_rate = Math.to_radians 5.
 let max_view_turn_rate = Math.to_radians 10.
 
@@ -203,8 +203,8 @@ let calculate_movement (p : Point.t) old_heading intent =
     match intent.movement.direction with
     | Player.Forward -> 0.
     | Backward -> Float.pi
-    | Left -> -.Float.pi /. 2.
-    | Right -> Float.pi /. 2.
+    | Left -> -.Math.half_pi
+    | Right -> Math.half_pi
   in
   let movement_heading = heading +. dir_heading in
   let dx = sin movement_heading *. velocity in

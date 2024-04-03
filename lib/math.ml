@@ -1,4 +1,5 @@
 let two_pi = 2. *. Float.pi
+let half_pi = Float.pi /. 2.
 let sign x = if Float.sign_bit x then -1. else 1.
 let is_between x a b = a <= x && x <= b
 let to_radians deg = deg *. Float.pi /. 180.

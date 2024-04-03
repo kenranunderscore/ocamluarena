@@ -13,8 +13,8 @@ let heading renderer (p : Point.t) h =
   Sdl.set_render_draw_color renderer ~red:10 ~green:250 ~blue:50;
   Sdl.draw_line_in_direction renderer p h len;
   Sdl.draw_line_in_direction renderer p (h +. Float.pi) Game.player_radius;
-  Sdl.draw_line_in_direction renderer p (h +. (Float.pi /. 2.)) Game.player_radius;
-  Sdl.draw_line_in_direction renderer p (h -. (Float.pi /. 2.)) Game.player_radius
+  Sdl.draw_line_in_direction renderer p (h +. Math.half_pi) Game.player_radius;
+  Sdl.draw_line_in_direction renderer p (h -. Math.half_pi) Game.player_radius
 ;;
 
 let view_angle renderer (p : Point.t) angle =

@@ -150,9 +150,10 @@ let shuffle xs =
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
-let start_new player_files seed =
+let start_new player_files rounds =
+  let seed = Random.bits () in
   Random.init seed;
-  (* Printf.printf "started new game with random seed %i\n%!" seed; *)
+  Printf.printf "started new %i-round game with random seed %i\n%!" rounds seed;
   let shuffled = shuffle player_files in
   shuffled |> List.iter print_endline;
   let state = ref State.initial in

@@ -324,8 +324,6 @@ let move_heads (state : State.t) =
 (* TODO: move attacks or players first? *)
 let move_players state =
   let player_moves =
-    (* FIXME: make sure the intent is _never_ lost due to players being filtered
-       out here *)
     state.living_players
     |> Player_map.map (fun p ->
       let move = calculate_movement p.state.pos p.state.heading p.state.intent in

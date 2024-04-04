@@ -77,6 +77,8 @@ type attack_state =
   ; owner : Player.Id.t
   }
 
+type stats = { wins : int }
+
 module State = struct
   type t =
     { (* TODO: have living*/dead* just be filters on some 'player_states' field.
@@ -85,14 +87,17 @@ module State = struct
     ; dead_players : player_data Player_map.t
         (* FIXME: players should not be state, but rather "config" *)
     ; players : (module PLAYER) Player_map.t
+    ; stats : stats Player_map.t
     ; attacks : attack_state list Player_map.t
     ; round : int
     }
 
+  (* TODO: make implementation opaque so that this doesn't have to exist *)
   let initial =
     { living_players = Player_map.empty
     ; dead_players = Player_map.empty
     ; players = Player_map.empty
+    ; stats = Player_map.empty
     ; attacks = Player_map.empty
     ; round = 0
     }
@@ -145,7 +150,11 @@ let add_player player_file (state_ref : State.t ref) =
   let gs = !state_ref in
   let new_id = 1 + (Player_map.bindings gs.players |> List.length) |> Player.Id.make in
   let impl = Player.Lua.load player_file (make_state_reader new_id state_ref) in
-  state_ref := { gs with players = Player_map.add new_id impl gs.players };
+  state_ref
+  := { gs with
+       players = Player_map.add new_id impl gs.players
+     ; stats = Player_map.add new_id { wins = 0 } gs.stats
+     };
   state_ref
 ;;
 
@@ -648,12 +657,31 @@ let run state_ref rounds =
   in
   let rec go round =
     if round > rounds
-    then print_endline "GAME OVER"
+    then (
+      print_endline "GAME OVER";
+      let state = !state_ref in
+      state.stats
+      |> Player_map.iter (fun id { wins } ->
+        let p = State.get_player id state in
+        let module M = (val p.impl : PLAYER) in
+        Printf.printf "  %s: %i wins\n%!" M.meta.name wins)
+      (* TODO: announce (possibly multiple) winner(s) *))
     else (
       Printf.printf "Round %i starting...\n%!" round;
       state_ref := init_round round !state_ref;
       match run_round 0 !state_ref with
-      | Round_won (_id, winner) ->
+      | Round_won (id, winner) ->
+        let state = !state_ref in
+        state_ref
+        := { state with
+             stats =
+               Player_map.update
+                 id
+                 (function
+                   | Some s -> Some { wins = s.wins + 1 }
+                   | None -> failwith "stat update impossible")
+                 state.stats
+           };
         let module M = (val winner.impl : PLAYER) in
         Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;
         go (round + 1)

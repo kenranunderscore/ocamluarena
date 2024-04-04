@@ -5,6 +5,10 @@ local m = {}
 -- handlers?
 m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
 
+function m.on_round_started(n)
+  me.log("Yay, new round new luck!")
+end
+
 function m.on_tick(n)
   if n % 20 == 0 then
     return { me.move_left(1), me.turn_right(0.05), me.look_right(0.03) }
@@ -23,7 +27,7 @@ function m.on_attack_hit(name, x, y)
 end
 
 function m.on_hit_by(name)
-  me.log("ouch! FUCK YOU, " .. name)
+  me.log("ouch! *shakes fist at " .. name .. "*")
 end
 
 function m.on_death()

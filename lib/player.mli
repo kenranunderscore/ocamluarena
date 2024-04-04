@@ -35,6 +35,7 @@ end
 
 module type PLAYER = sig
   val meta : meta
+  val on_round_started : int -> command list
   val on_tick : int -> command list
   val on_enemy_seen : string -> Point.t -> command list
   val on_attack_hit : string -> Point.t -> command list

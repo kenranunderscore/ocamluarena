@@ -266,6 +266,7 @@ let find_colliding_players positions =
 *)
 
 type event =
+  | Round_started of int
   | Tick of int
   | Enemy_seen of string * Point.t (* TODO: replace string with enemy information *)
   | Attack_hit of string * Point.t
@@ -273,6 +274,7 @@ type event =
   | Death
 
 let event_index = function
+  | Round_started _ -> -1
   | Tick _ -> 0
   | Enemy_seen _ -> 1
   | Attack_hit _ -> 2
@@ -446,6 +448,7 @@ let events_to_commands player events =
   let module M = (val player : PLAYER) in
   events
   |> List.concat_map (function
+    | Round_started round -> M.on_round_started round
     | Tick tick -> M.on_tick tick
     | Enemy_seen (name, pos) -> M.on_enemy_seen name pos
     | Attack_hit (name, pos) -> M.on_attack_hit name pos
@@ -467,7 +470,10 @@ let sort_events events =
 ;;
 
 let distribute_events tick events (state : State.t) =
-  let all_events = Global_event (Tick tick) :: events in
+  let events = Global_event (Tick tick) :: events in
+  let all_events =
+    if tick = 0 then Global_event (Round_started state.round) :: events else events
+  in
   let living_players =
     state.living_players
     |> Player_map.mapi (fun id p ->
@@ -622,7 +628,7 @@ let run state_ref rounds =
     else (
       Printf.printf "Round %i starting...\n%!" round;
       state_ref := init_round round !state_ref;
-      match run_round round !state_ref with
+      match run_round 0 !state_ref with
       | Round_won (_id, winner) ->
         let module M = (val winner.impl : PLAYER) in
         Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;

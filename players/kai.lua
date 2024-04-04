@@ -13,9 +13,7 @@ function m.on_tick(n)
 end
 
 function m.on_enemy_seen(name, x, y)
-  me.log(name .. ", you're dead meat!")
   angle = math.atan2(y - me.y(), x - me.x()) + math.pi / 2
-  me.log("angle = " .. angle)
   return { me.attack(angle) }
 end
 

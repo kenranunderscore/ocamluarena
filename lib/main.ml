@@ -8,8 +8,6 @@ let global_scale = 2.0
 let main_loop renderer get_state =
   let e = Sdl.Event.create () in
   let quit = ref false in
-  (* FIXME: degrade gracefully when players cannot be loaded *)
-  Random.self_init ();
   Sdl.scale renderer global_scale;
   while not !quit do
     while Sdl.poll_event e && not !quit do
@@ -29,8 +27,10 @@ let main_loop renderer get_state =
 ;;
 
 let main () =
-  let state = Game.init [ "kai.lua"; "lloyd.lua" ] 5 in
-  let _ = Domain.spawn (fun _ -> Game.run state) in
+  Random.self_init ();
+  let rounds = 3 in
+  let state = Game.init [ "kai.lua"; "lloyd.lua" ] rounds in
+  let _ = Domain.spawn (fun _ -> Game.run state rounds) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
       ~w:(Int.of_float @@ (global_scale *. Game.arena_width))

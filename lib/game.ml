@@ -81,6 +81,8 @@ module State = struct
   type t =
     { living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
+        (* FIXME: players should not be state, but rather "config" *)
+    ; players : (module PLAYER) Player_map.t
     ; attacks : attack_state list Player_map.t
     ; round : int
     }
@@ -88,6 +90,7 @@ module State = struct
   let initial =
     { living_players = Player_map.empty
     ; dead_players = Player_map.empty
+    ; players = Player_map.empty
     ; attacks = Player_map.empty
     ; round = 0
     }
@@ -137,15 +140,10 @@ let make_state_reader (id : Player.Id.t) (state : State.t ref) () =
 ;;
 
 let add_player player_file (state_ref : State.t ref) =
-  (* NOTE: assumes no players are dead *)
   let gs = !state_ref in
-  let new_id =
-    1 + (Player_map.bindings gs.living_players |> List.length) |> Player.Id.make
-  in
-  let player_state = random_initial_state gs in
+  let new_id = 1 + (Player_map.bindings gs.players |> List.length) |> Player.Id.make in
   let impl = Player.Lua.load player_file (make_state_reader new_id state_ref) in
-  let data = { state = player_state; impl } in
-  state_ref := { gs with living_players = Player_map.add new_id data gs.living_players };
+  state_ref := { gs with players = Player_map.add new_id impl gs.players };
   state_ref
 ;;
 
@@ -486,11 +484,6 @@ let distribute_events tick events (state : State.t) =
   { state with living_players }
 ;;
 
-type step_result =
-  | Round_won of (Player.Id.t * player_data)
-  | Draw
-  | Next_state of State.t
-
 let transition_hitpoints events state =
   let state =
     List.fold_right
@@ -579,31 +572,64 @@ let step (state : State.t) tick =
 let init player_files rounds =
   let seed = Random.bits () in
   Random.init seed;
-  Printf.printf "started new %i-round game with random seed %i\n%!" rounds seed;
-  let shuffled = shuffle player_files in
-  shuffled |> List.iter print_endline;
-  let state = ref State.initial in
-  List.fold_right add_player (shuffle player_files) state
+  Printf.printf "Initializing new %i-round game with random seed %i\n%!" rounds seed;
+  List.fold_right add_player player_files (ref State.initial)
 ;;
+
+let place_players (state : State.t) =
+  List.fold_right
+    (fun (id, impl) s ->
+      let player_state = random_initial_state s in
+      let data = { state = player_state; impl } in
+      { s with living_players = Player_map.add id data s.living_players })
+    (state.players |> Player_map.bindings |> shuffle)
+    state
+;;
+
+let init_round round (state : State.t) =
+  place_players
+    { state with
+      round
+    ; dead_players = Player_map.empty
+    ; living_players = Player_map.empty
+    }
+;;
+
+type round_result =
+  | Round_won of (Player.Id.t * player_data)
+  | Draw
 
 let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
 let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
-let run state_ref =
+let run state_ref rounds =
   (* TODO: measure whether just using the ref here is faster *)
   let rec run_round tick state =
     if round_over state
     then (
       match round_winner state with
-      | Some (_id, p) ->
-        let module M = (val p.impl : PLAYER) in
-        Printf.printf "GAME OVER - %s won!\n%!" M.meta.name
-      | None -> print_endline "Everybody died - It's a DRAW")
+      | Some winner -> Round_won winner
+      | None -> Draw)
     else (
       let next_state = step state tick in
       state_ref := next_state;
       Thread.delay 0.01;
       run_round (tick + 1) next_state)
   in
-  run_round 0 !state_ref
+  let rec go round =
+    if round > rounds
+    then print_endline "GAME OVER"
+    else (
+      Printf.printf "Round %i starting...\n%!" round;
+      state_ref := init_round round !state_ref;
+      match run_round round !state_ref with
+      | Round_won (_id, winner) ->
+        let module M = (val winner.impl : PLAYER) in
+        Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;
+        go (round + 1)
+      | Draw ->
+        Printf.printf "Round %i ended in a draw!\n%!" round;
+        go (round + 1))
+  in
+  go 1
 ;;

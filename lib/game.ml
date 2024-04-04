@@ -684,6 +684,7 @@ let run state_ref rounds =
            };
         let module M = (val winner.impl : PLAYER) in
         Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;
+        Thread.delay 2.;
         go (round + 1)
       | Draw ->
         Printf.printf "Round %i ended in a draw!\n%!" round;

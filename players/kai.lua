@@ -6,10 +6,6 @@ function m.on_tick(n)
   if n % 10 == 0 then
     return { me.move_forward(5), me.look_left(0.05), me.attack(n / 50) }
   end
-
-  if n % 21 == 0 then
-    me.log("tick")
-  end
 end
 
 function m.on_enemy_seen(name, x, y)

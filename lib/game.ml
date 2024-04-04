@@ -79,7 +79,9 @@ type attack_state =
 
 module State = struct
   type t =
-    { living_players : player_data Player_map.t
+    { (* TODO: have living*/dead* just be filters on some 'player_states' field.
+         that should also help us when distributing events to all players *)
+      living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
         (* FIXME: players should not be state, but rather "config" *)
     ; players : (module PLAYER) Player_map.t
@@ -272,6 +274,8 @@ type event =
   | Attack_hit of string * Point.t
   | Hit_by of string
   | Death
+  | Round_over of string option
+  | Round_won
 
 let event_index = function
   | Round_started _ -> -1
@@ -280,6 +284,8 @@ let event_index = function
   | Attack_hit _ -> 2
   | Hit_by _ -> 3
   | Death -> 4
+  | Round_over _ -> 5
+  | Round_won -> 6
 ;;
 
 type targeted_event =
@@ -455,6 +461,12 @@ let events_to_commands player events =
     | Hit_by name -> M.on_hit_by name
     | Death ->
       M.on_death ();
+      []
+    | Round_over mp ->
+      M.on_round_over mp;
+      []
+    | Round_won ->
+      M.on_round_won ();
       [])
 ;;
 
@@ -565,13 +577,28 @@ let vision_events (state : State.t) =
   |> List.concat
 ;;
 
+let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
+let round_winner (state : State.t) = Player_map.choose_opt state.living_players
+
 let step (state : State.t) tick =
   (* smells like state monad *)
   let enemy_seen_events = vision_events state in
   let state, intent_events = apply_intents state in
   let state, death_events = transition_hitpoints intent_events state in
   let state = distribute_death_events death_events state in
-  let all_events = List.concat [ intent_events; death_events; enemy_seen_events ] in
+  let round_over_events =
+    if round_over state
+    then (
+      match round_winner state with
+      | Some (id, winner) ->
+        let module M = (val winner.impl : PLAYER) in
+        [ Global_event (Round_over (Some M.meta.name)); Player_event (id, Round_won) ]
+      | None -> [ Global_event (Round_over None) ])
+    else []
+  in
+  let all_events =
+    List.concat [ intent_events; death_events; enemy_seen_events; round_over_events ]
+  in
   distribute_events tick all_events state
 ;;
 
@@ -604,9 +631,6 @@ let init_round round (state : State.t) =
 type round_result =
   | Round_won of (Player.Id.t * player_data)
   | Draw
-
-let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
-let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
 let run state_ref rounds =
   (* TODO: measure whether just using the ref here is faster *)

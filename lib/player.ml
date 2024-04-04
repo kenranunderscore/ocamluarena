@@ -40,6 +40,8 @@ module type PLAYER = sig
   val on_attack_hit : string -> Point.t -> command list
   val on_hit_by : string -> command list
   val on_death : unit -> unit
+  val on_round_over : string option -> unit
+  val on_round_won : unit -> unit
 end
 
 type player_info =
@@ -144,6 +146,22 @@ module Lua = struct
     if Lua.isnil ls (-1) then Lua.pop ls 1 else Lua.call ls 0 0
   ;;
 
+  let lua_on_round_over ls mname =
+    Lua.getfield ls 1 "on_round_over";
+    if Lua.isnil ls (-1)
+    then Lua.pop ls 1
+    else (
+      (match mname with
+       | Some name -> Lua.pushstring ls name
+       | None -> Lua.pushnil ls);
+      Lua.call ls 1 0)
+  ;;
+
+  let lua_on_round_won ls =
+    Lua.getfield ls 1 "on_round_won";
+    if Lua.isnil ls (-1) then Lua.pop ls 1 else Lua.call ls 0 0
+  ;;
+
   let make_lua_player ls meta : (module PLAYER) =
     (module struct
       let meta = meta
@@ -153,6 +171,8 @@ module Lua = struct
       let on_attack_hit name pos = lua_attack_hit ls name pos
       let on_hit_by name = lua_hit_by ls name
       let on_death () = lua_on_death ls
+      let on_round_over mname = lua_on_round_over ls mname
+      let on_round_won () = lua_on_round_won ls
     end)
   ;;
 

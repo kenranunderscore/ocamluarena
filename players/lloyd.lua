@@ -34,4 +34,17 @@ function m.on_death()
   me.log("das war's, ich bin tot")
 end
 
+function m.on_round_won()
+  me.log("Taste my lightning, suckerrrrrrs")
+end
+
+function m.on_round_over(winner)
+  me.log("over")
+  if winner == nil then
+    me.log("haha, no one won")
+  elseif winner ~= "Lloyd" then
+    me.log("I'm not happy for you, " .. winner)
+  end
+end
+
 return m

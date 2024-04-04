@@ -15,6 +15,7 @@ let attack_cooldown = 35
 
 module type PLAYER = Player.PLAYER
 
+(* TODO: hide the map implementation *)
 module Player_map = struct
   include Map.Make (Player.Id)
 
@@ -81,12 +82,14 @@ module State = struct
     { living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
     ; attacks : attack_state list Player_map.t
+    ; round : int
     }
 
   let initial =
     { living_players = Player_map.empty
     ; dead_players = Player_map.empty
     ; attacks = Player_map.empty
+    ; round = 0
     }
   ;;
 
@@ -149,19 +152,6 @@ let add_player player_file (state_ref : State.t ref) =
 let shuffle xs =
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
-
-let start_new player_files rounds =
-  let seed = Random.bits () in
-  Random.init seed;
-  Printf.printf "started new %i-round game with random seed %i\n%!" rounds seed;
-  let shuffled = shuffle player_files in
-  shuffled |> List.iter print_endline;
-  let state = ref State.initial in
-  List.fold_right add_player (shuffle player_files) state
-;;
-
-let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
-let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
 let reduce_commands commands =
   let rec reduce = function
@@ -584,4 +574,36 @@ let step (state : State.t) tick =
   let state = distribute_death_events death_events state in
   let all_events = List.concat [ intent_events; death_events; enemy_seen_events ] in
   distribute_events tick all_events state
+;;
+
+let init player_files rounds =
+  let seed = Random.bits () in
+  Random.init seed;
+  Printf.printf "started new %i-round game with random seed %i\n%!" rounds seed;
+  let shuffled = shuffle player_files in
+  shuffled |> List.iter print_endline;
+  let state = ref State.initial in
+  List.fold_right add_player (shuffle player_files) state
+;;
+
+let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
+let round_winner (state : State.t) = Player_map.choose_opt state.living_players
+
+let run state_ref =
+  (* TODO: measure whether just using the ref here is faster *)
+  let rec run_round tick state =
+    if round_over state
+    then (
+      match round_winner state with
+      | Some (_id, p) ->
+        let module M = (val p.impl : PLAYER) in
+        Printf.printf "GAME OVER - %s won!\n%!" M.meta.name
+      | None -> print_endline "Everybody died - It's a DRAW")
+    else (
+      let next_state = step state tick in
+      state_ref := next_state;
+      Thread.delay 0.01;
+      run_round (tick + 1) next_state)
+  in
+  run_round 0 !state_ref
 ;;

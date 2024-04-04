@@ -29,25 +29,8 @@ let main_loop renderer get_state =
 ;;
 
 let main () =
-  let state = Game.start_new [ "lloyd.lua"; "kai.lua" ] 5 in
-  let _ =
-    Domain.spawn (fun _ ->
-      let tick = ref 0 in
-      let quit = ref false in
-      while not !quit do
-        tick := !tick + 1;
-        state := Game.step !state !tick;
-        if Game.round_over !state
-        then (
-          quit := true;
-          match Game.round_winner !state with
-          | Some (_id, p) ->
-            let module M = (val p.impl : PLAYER) in
-            print_endline M.meta.name
-          | None -> print_endline "It's a draw");
-        Thread.delay 0.01
-      done)
-  in
+  let state = Game.init [ "kai.lua"; "lloyd.lua" ] 5 in
+  let _ = Domain.spawn (fun _ -> Game.run state) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
       ~w:(Int.of_float @@ (global_scale *. Game.arena_width))

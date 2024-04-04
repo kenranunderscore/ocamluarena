@@ -93,7 +93,7 @@ module State = struct
     }
 
   (* TODO: make implementation opaque so that this doesn't have to exist *)
-  let initial =
+  let empty =
     { living_players = Player_map.empty
     ; dead_players = Player_map.empty
     ; players = Player_map.empty
@@ -615,7 +615,7 @@ let init player_files rounds =
   let seed = Random.bits () in
   Random.init seed;
   Printf.printf "Initializing new %i-round game with random seed %i\n%!" rounds seed;
-  List.fold_right add_player player_files (ref State.initial)
+  List.fold_right add_player player_files (ref State.empty)
 ;;
 
 let place_players (state : State.t) =

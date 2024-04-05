@@ -1,14 +1,5 @@
 let failwithf f = Printf.ksprintf failwith f
 
-(* TODO: settings? configurable? *)
-let arena_width = 1000.
-let arena_height = 800.
-let player_diameter = 50.
-let player_radius = player_diameter /. 2.
-let player_angle_of_vision = 0.9 *. Math.half_pi
-let max_turn_rate = Math.to_radians 5.
-let max_view_turn_rate = Math.to_radians 10.
-
 (* TODO: property of the actual attack *)
 let attack_radius = 4.
 let attack_cooldown = 35
@@ -94,24 +85,27 @@ module State = struct
          that should also help us when distributing events to all players *)
       living_players : player_data Player_map.t
     ; dead_players : player_data Player_map.t
-        (* FIXME: players should not be state, but rather "config" *)
+        (* FIXME: players and settings should not be part of state, but rather
+           "config" *)
     ; players : (module PLAYER) Player_map.t
+    ; settings : Settings.t
     ; stats : stats Player_map.t
     ; attacks : attack_state list Player_map.t
     ; round : int
     }
 
   let random_initial_player_state state =
-    let random_coord dim =
-      dim -. (2. *. player_diameter) |> Random.float |> ( +. ) player_diameter
-    in
+    let diameter = 2. *. state.settings.player_radius in
+    let random_coord dim = dim -. (4. *. diameter) |> Random.float |> ( +. ) diameter in
     let random_pos () =
-      Point.make ~x:(random_coord arena_width) ~y:(random_coord arena_height)
+      Point.make
+        ~x:(random_coord state.settings.arena_width)
+        ~y:(random_coord state.settings.arena_height)
     in
     let is_valid p =
       not
         (Player_map.exists
-           (fun _id { state; _ } -> Point.dist p state.pos < 2. *. player_diameter)
+           (fun _id { state; _ } -> Point.dist p state.pos < 2. *. diameter)
            state.living_players)
     in
     let pos = first_with random_pos is_valid in
@@ -160,17 +154,21 @@ module State = struct
       state
   ;;
 
-  let init player_files rounds =
-    let seed = Random.bits () in
+  let init (settings : Settings.t) =
+    let seed = settings.rng_seed in
     Random.init seed;
-    Printf.printf "Initializing new %i-round game with random seed %i\n%!" rounds seed;
+    Printf.printf
+      "Initializing new %i-round game with random seed %i\n%!"
+      settings.rounds
+      seed;
     List.fold_right
       add_player
-      player_files
+      settings.player_files
       (ref
          { living_players = Player_map.empty
          ; dead_players = Player_map.empty
          ; players = Player_map.empty
+         ; settings
          ; stats = Player_map.empty
          ; attacks = Player_map.empty
          ; round = 0
@@ -178,9 +176,11 @@ module State = struct
   ;;
 end
 
-let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
+let players_collide player_diameter (pos1 : Point.t) pos2 =
+  Point.dist pos1 pos2 <= player_diameter
+;;
 
-let inside_arena { Point.x; y } =
+let inside_arena ~arena_width ~arena_height { Point.x; y } =
   Math.is_between x 0. arena_width && Math.is_between y 0. arena_height
 ;;
 
@@ -209,7 +209,7 @@ let calculate_new_pos (p : Point.t) heading velocity =
   Point.make ~x ~y
 ;;
 
-let calculate_movement (p : Point.t) old_heading intent =
+let calculate_movement max_turn_rate (p : Point.t) old_heading intent =
   let max_velocity = 1. in
   let velocity = Float.min intent.movement.distance max_velocity in
   let dangle =
@@ -252,28 +252,33 @@ let determine_intent old_intent cmds =
 
 (* TODO: only pass "obstacles" instead of whole state *)
 let is_valid_position
+  ~arena_width
+  ~arena_height
+  player_radius
   (player_id : Player.Id.t)
   ({ x; y } as p : Point.t)
   (state : State.t)
   =
-  let r = player_diameter /. 2. in
   let stays_inside_arena =
-    x -. r >= 0. && x +. r <= arena_width && y -. r >= 0. && y +. r <= arena_height
+    x -. player_radius >= 0.
+    && x +. player_radius <= arena_width
+    && y -. player_radius >= 0.
+    && y +. player_radius <= arena_height
   in
   let would_hit_other_player =
     state.living_players
     |> Player_map.exists (fun id { state; _ } ->
-      player_id <> id && players_collide p state.pos)
+      player_id <> id && players_collide player_radius p state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;
 
-let find_colliding_players positions =
+let find_colliding_players player_diameter positions =
   let rec go (_player, movement_change) to_check acc =
     (* TODO: find out who collided with whom -> event *)
     let colliding =
       Player_map.filter
-        (fun _p m -> players_collide movement_change.position m.position)
+        (fun _p m -> players_collide player_diameter movement_change.position m.position)
         to_check
     in
     let new_acc = List.append acc (Player_map.bindings colliding) in
@@ -327,17 +332,19 @@ type targeted_event =
    - should this return vision events, or should these be decided AFTER movement?
    - or should this just be called after movement _and_ return vision events?
 *)
-let move_heads (state : State.t) =
+let move_heads (settings : Settings.t) (state : State.t) =
   let living_players =
     state.living_players
     |> Player_map.map (fun p ->
       let intent = p.state.intent in
       let abs_angle = Float.abs intent.view_angle in
       let dangle =
-        Math.sign intent.view_angle *. Float.min max_view_turn_rate abs_angle
+        Math.sign intent.view_angle *. Float.min settings.max_view_turn_rate abs_angle
       in
       let angle =
-        if abs_angle < max_view_turn_rate then 0. else intent.view_angle +. dangle
+        if abs_angle < settings.max_view_turn_rate
+        then 0.
+        else intent.view_angle +. dangle
       in
       let intent = { intent with view_angle = angle } in
       (* TODO: modify/set_FOO functions on state *)
@@ -350,15 +357,25 @@ let move_heads (state : State.t) =
 ;;
 
 (* TODO: move attacks or players first? *)
-let move_players state =
+(* TODO: stamp coupling: refine? *)
+let move_players
+  ({ arena_width; arena_height; max_turn_rate; player_radius; _ } : Settings.t)
+  (state : State.t)
+  =
+  let player_diameter = 2. *. player_radius in
   let player_moves =
     state.living_players
     |> Player_map.map (fun p ->
-      let move = calculate_movement p.state.pos p.state.heading p.state.intent in
+      let move =
+        calculate_movement max_turn_rate p.state.pos p.state.heading p.state.intent
+      in
       p, move)
-    |> Player_map.filter (fun id (_p, move) -> is_valid_position id move.position state)
+    |> Player_map.filter (fun id (_p, move) ->
+      is_valid_position ~arena_width ~arena_height player_radius id move.position state)
   in
-  let collisions = player_moves |> Player_map.map snd |> find_colliding_players in
+  let collisions =
+    player_moves |> Player_map.map snd |> find_colliding_players player_diameter
+  in
   let moving_players =
     player_moves
     |> Player_map.filter (fun id _ ->
@@ -380,14 +397,17 @@ let move_players state =
   { state with living_players }, []
 ;;
 
-let players_hit attack players =
+let players_hit player_radius attack players =
   players
   |> Player_map.filter (fun id player ->
     id <> attack.owner
     && Math.circles_intersect player.state.pos player_radius attack.pos attack_radius)
 ;;
 
-let transition_attacks (state : State.t) =
+let transition_attacks
+  ({ arena_width; arena_height; player_radius; _ } : Settings.t)
+  (state : State.t)
+  =
   let attacks_or_events =
     state.attacks
     |> Player_map.map (fun attacks ->
@@ -395,9 +415,9 @@ let transition_attacks (state : State.t) =
         (fun attack ((atts, evts) as acc) ->
           let velocity = 3. in
           let pos = calculate_new_pos attack.pos attack.heading velocity in
-          if inside_arena pos
+          if inside_arena ~arena_width ~arena_height pos
           then (
-            let hits = players_hit attack state.living_players in
+            let hits = players_hit player_radius attack state.living_players in
             if Player_map.is_empty hits
             then { attack with pos } :: atts, evts
             else
@@ -466,11 +486,11 @@ let create_attacks (state : State.t) =
   { state with attacks; living_players }, []
 ;;
 
-let apply_intents state =
+let apply_intents (settings : Settings.t) state =
   (* TODO: refactor *)
-  let state, vision_events = move_heads state in
-  let state, movement_events = move_players state in
-  let state, attack_events = transition_attacks state in
+  let state, vision_events = move_heads settings state in
+  let state, movement_events = move_players settings state in
+  let state, attack_events = transition_attacks settings state in
   (* TODO: need attack event for player; with attack type? I guess so *)
   let state, attack_fired_events = create_attacks state in
   ( state
@@ -579,7 +599,7 @@ let distribute_death_events events (state : State.t) =
     state
 ;;
 
-let can_spot p view_direction q =
+let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
   let dangle = player_angle_of_vision /. 2. in
   let left = view_direction -. dangle in
   let right = view_direction +. dangle in
@@ -593,12 +613,21 @@ let can_spot p view_direction q =
   || (alpha_left <= left && alpha_right >= right)
 ;;
 
-let vision_events (state : State.t) =
+let vision_events
+  ({ player_angle_of_vision; player_radius; _ } : Settings.t)
+  (state : State.t)
+  =
   state.living_players
   |> Player_map.mapi (fun id p ->
     state.living_players
     |> Player_map.filter_map (fun id' p' ->
-      if id <> id' && can_spot p.state.pos p.state.view_direction p'.state.pos
+      if id <> id'
+         && can_spot
+              ~player_angle_of_vision
+              ~player_radius
+              p.state.pos
+              p.state.view_direction
+              p'.state.pos
       then
         let module M = (val p'.impl : PLAYER) in
         Some (Player_event (id, Enemy_seen (M.meta.name, p'.state.pos)))
@@ -611,10 +640,12 @@ let vision_events (state : State.t) =
 let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
 let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
+(* FIXME: split settings into state and config -> Game.t containing State.t and
+   Settings.t? *)
 let step (state : State.t) tick =
   (* smells like state monad *)
-  let enemy_seen_events = vision_events state in
-  let state, intent_events = apply_intents state in
+  let enemy_seen_events = vision_events state.settings state in
+  let state, intent_events = apply_intents state.settings state in
   let state, death_events = transition_hitpoints intent_events state in
   let state = distribute_death_events death_events state in
   let round_over_events =
@@ -646,7 +677,8 @@ type round_result =
   | Round_won of (Player.Id.t * player_data)
   | Draw
 
-let run state_ref rounds =
+let run (state_ref : State.t ref) =
+  let rounds = !state_ref.settings.rounds in
   (* TODO: measure whether just using the ref here is faster *)
   let rec run_round tick state =
     if round_over state

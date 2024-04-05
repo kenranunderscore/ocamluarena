@@ -28,13 +28,13 @@ let main_loop renderer get_state =
 
 let main () =
   Random.self_init ();
-  let rounds = 3 in
-  let state = Game.State.init [ "kai.lua"; "lloyd.lua" ] rounds in
-  let _ = Domain.spawn (fun _ -> Game.run state rounds) in
+  let settings = Settings.make [ "kai.lua"; "lloyd.lua" ] (Random.bits ()) in
+  let state = Game.State.init settings in
+  let (_ : unit Domain.t) = Domain.spawn (fun _ -> Game.run state) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
-      ~w:(Int.of_float @@ (global_scale *. Game.arena_width))
-      ~h:(Int.of_float @@ (global_scale *. Game.arena_height))
+      ~w:(Int.of_float @@ (global_scale *. settings.arena_width))
+      ~h:(Int.of_float @@ (global_scale *. settings.arena_height))
       "Arena"
       (fun _window renderer -> main_loop renderer (fun () -> !state)))
 ;;

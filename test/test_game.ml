@@ -4,7 +4,12 @@ module Point = Arena.Point
 let test_can_spot_1st_quadrant_too_far_left () =
   let open Arena.Game in
   let res =
-    can_spot (Point.make ~x:400. ~y:400.) (-.Float.pi /. 4.) (Point.make ~x:500. ~y:300.)
+    can_spot
+      ~player_angle_of_vision:1.4
+      ~player_radius:25.
+      (Point.make ~x:400. ~y:400.)
+      (-.Float.pi /. 4.)
+      (Point.make ~x:500. ~y:300.)
   in
   check bool "cannot spot" false res
 ;;
@@ -13,6 +18,8 @@ let test_can_spot_1st_quadrant_too_far_right () =
   let open Arena.Game in
   let res =
     can_spot
+      ~player_angle_of_vision:1.4
+      ~player_radius:25.
       (Point.make ~x:400. ~y:400.)
       (3. *. Float.pi /. 4.)
       (Point.make ~x:500. ~y:300.)
@@ -23,7 +30,12 @@ let test_can_spot_1st_quadrant_too_far_right () =
 let test_can_spot_1st_quadrant_head_on () =
   let open Arena.Game in
   let res =
-    can_spot (Point.make ~x:400. ~y:400.) (Float.pi /. 4.) (Point.make ~x:500. ~y:300.)
+    can_spot
+      ~player_angle_of_vision:1.4
+      ~player_radius:25.
+      (Point.make ~x:400. ~y:400.)
+      (Float.pi /. 4.)
+      (Point.make ~x:500. ~y:300.)
   in
   check bool "can spot" true res
 ;;
@@ -32,6 +44,8 @@ let test_can_spot_1st_quadrant_behind () =
   let open Arena.Game in
   let res =
     can_spot
+      ~player_angle_of_vision:1.4
+      ~player_radius:25.
       (Point.make ~x:400. ~y:400.)
       (5. *. Float.pi /. 4.)
       (Point.make ~x:500. ~y:300.)

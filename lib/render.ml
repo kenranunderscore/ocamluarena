@@ -8,39 +8,45 @@ module Player_map = Game.Player_map
 
 module type PLAYER = Player.PLAYER
 
-let heading renderer (p : Point.t) h =
-  let len = Game.player_radius +. 10. in
+let heading renderer (settings : Settings.t) (p : Point.t) h =
+  let radius = settings.player_radius in
+  let len = radius +. 10. in
   Sdl.set_render_draw_color renderer ~red:10 ~green:250 ~blue:50;
   Sdl.draw_line_in_direction renderer p h len;
-  Sdl.draw_line_in_direction renderer p (h +. Float.pi) Game.player_radius;
-  Sdl.draw_line_in_direction renderer p (h +. Math.half_pi) Game.player_radius;
-  Sdl.draw_line_in_direction renderer p (h -. Math.half_pi) Game.player_radius
+  Sdl.draw_line_in_direction renderer p (h +. Float.pi) radius;
+  Sdl.draw_line_in_direction renderer p (h +. Math.half_pi) radius;
+  Sdl.draw_line_in_direction renderer p (h -. Math.half_pi) radius
 ;;
 
-let view_angle renderer (p : Point.t) angle =
+let view_angle renderer (settings : Settings.t) (p : Point.t) angle =
   (* TODO: bind SDL_RenderGeometry and use that to fill the area *)
-  let left_angle = angle -. (Game.player_angle_of_vision /. 2.) in
-  let right_angle = angle +. (Game.player_angle_of_vision /. 2.) in
+  let left_angle = angle -. (settings.player_angle_of_vision /. 2.) in
+  let right_angle = angle +. (settings.player_angle_of_vision /. 2.) in
   Sdl.set_render_draw_color renderer ~red:20 ~green:100 ~blue:100;
   Sdl.draw_line_in_direction renderer p angle 50.;
   Sdl.draw_line_in_direction renderer p left_angle 5000.;
   Sdl.draw_line_in_direction renderer p right_angle 5000.
 ;;
 
-let player renderer (meta : Player.meta) (player_state : Game.player_state) =
+let player
+  renderer
+  (settings : Settings.t)
+  (meta : Player.meta)
+  (player_state : Game.player_state)
+  =
   let { Color.red; green; blue } = meta.color in
   let p = player_state.pos in
   Sdl.set_render_draw_color renderer ~red ~green ~blue;
-  Sdl.draw_circle renderer p Game.player_radius;
-  heading renderer player_state.pos player_state.heading;
-  view_angle renderer player_state.pos player_state.view_direction
+  Sdl.draw_circle renderer p settings.player_radius;
+  heading renderer settings player_state.pos player_state.heading;
+  view_angle renderer settings player_state.pos player_state.view_direction
 ;;
 
 let players renderer (game_state : State.t) =
   game_state.living_players
   |> Player_map.iter (fun _id { Game.state; impl } ->
     let module M = (val impl : PLAYER) in
-    player renderer M.meta state)
+    player renderer game_state.settings M.meta state)
 ;;
 
 let attack renderer (attack : Game.attack_state) =

@@ -79,6 +79,15 @@ type attack_state =
 
 type stats = { wins : int }
 
+let rec first_with f pred =
+  let res = f () in
+  if pred res then res else first_with f pred
+;;
+
+let shuffle xs =
+  xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
+;;
+
 module State = struct
   type t =
     { (* TODO: have living*/dead* just be filters on some 'player_states' field.
@@ -92,14 +101,28 @@ module State = struct
     ; round : int
     }
 
-  (* TODO: make implementation opaque so that this doesn't have to exist *)
-  let empty =
-    { living_players = Player_map.empty
-    ; dead_players = Player_map.empty
-    ; players = Player_map.empty
-    ; stats = Player_map.empty
-    ; attacks = Player_map.empty
-    ; round = 0
+  let random_initial_player_state state =
+    let random_coord dim =
+      dim -. (2. *. player_diameter) |> Random.float |> ( +. ) player_diameter
+    in
+    let random_pos () =
+      Point.make ~x:(random_coord arena_width) ~y:(random_coord arena_height)
+    in
+    let is_valid p =
+      not
+        (Player_map.exists
+           (fun _id { state; _ } -> Point.dist p state.pos < 2. *. player_diameter)
+           state.living_players)
+    in
+    let pos = first_with random_pos is_valid in
+    let heading = Random.float Math.two_pi in
+    let view_direction = Random.float Math.two_pi in
+    { pos
+    ; heading
+    ; view_direction
+    ; hp = 100
+    ; intent = default_intent
+    ; attack_cooldown = 0
     }
   ;;
 
@@ -108,58 +131,57 @@ module State = struct
     | Some player -> player
     | None -> Player_map.find id state.dead_players
   ;;
+
+  let make_reader (id : Player.Id.t) state_ref () =
+    let player = get_player id !state_ref in
+    let { pos; heading; hp; view_direction; _ } = player.state in
+    { Player.pos; heading; hp; view_direction }
+  ;;
+
+  let add_player player_file state_ref =
+    let gs = !state_ref in
+    let new_id = 1 + (Player_map.bindings gs.players |> List.length) |> Player.Id.make in
+    let impl = Player.Lua.load player_file (make_reader new_id state_ref) in
+    state_ref
+    := { gs with
+         players = Player_map.add new_id impl gs.players
+       ; stats = Player_map.add new_id { wins = 0 } gs.stats
+       };
+    state_ref
+  ;;
+
+  let place_players state =
+    List.fold_right
+      (fun (id, impl) s ->
+        let player_state = random_initial_player_state s in
+        let data = { state = player_state; impl } in
+        { s with living_players = Player_map.add id data s.living_players })
+      (state.players |> Player_map.bindings |> shuffle)
+      state
+  ;;
+
+  let init player_files rounds =
+    let seed = Random.bits () in
+    Random.init seed;
+    Printf.printf "Initializing new %i-round game with random seed %i\n%!" rounds seed;
+    List.fold_right
+      add_player
+      player_files
+      (ref
+         { living_players = Player_map.empty
+         ; dead_players = Player_map.empty
+         ; players = Player_map.empty
+         ; stats = Player_map.empty
+         ; attacks = Player_map.empty
+         ; round = 0
+         })
+  ;;
 end
 
 let players_collide (pos1 : Point.t) pos2 = Point.dist pos1 pos2 <= player_diameter
 
 let inside_arena { Point.x; y } =
   Math.is_between x 0. arena_width && Math.is_between y 0. arena_height
-;;
-
-let rec first_with f pred =
-  let res = f () in
-  if pred res then res else first_with f pred
-;;
-
-let random_initial_state (state : State.t) =
-  let random_coord dim =
-    dim -. (2. *. player_diameter) |> Random.float |> ( +. ) player_diameter
-  in
-  let random_pos () =
-    Point.make ~x:(random_coord arena_width) ~y:(random_coord arena_height)
-  in
-  let is_valid p =
-    not
-      (Player_map.exists
-         (fun _id { state; _ } -> Point.dist p state.pos < 2. *. player_diameter)
-         state.living_players)
-  in
-  let pos = first_with random_pos is_valid in
-  let heading = Random.float Math.two_pi in
-  let view_direction = Random.float Math.two_pi in
-  { pos; heading; view_direction; hp = 100; intent = default_intent; attack_cooldown = 0 }
-;;
-
-let make_state_reader (id : Player.Id.t) (state : State.t ref) () =
-  let player = State.get_player id !state in
-  let { pos; heading; hp; view_direction; _ } = player.state in
-  { Player.pos; heading; hp; view_direction }
-;;
-
-let add_player player_file (state_ref : State.t ref) =
-  let gs = !state_ref in
-  let new_id = 1 + (Player_map.bindings gs.players |> List.length) |> Player.Id.make in
-  let impl = Player.Lua.load player_file (make_state_reader new_id state_ref) in
-  state_ref
-  := { gs with
-       players = Player_map.add new_id impl gs.players
-     ; stats = Player_map.add new_id { wins = 0 } gs.stats
-     };
-  state_ref
-;;
-
-let shuffle xs =
-  xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
 let reduce_commands commands =
@@ -611,25 +633,8 @@ let step (state : State.t) tick =
   distribute_events tick all_events state
 ;;
 
-let init player_files rounds =
-  let seed = Random.bits () in
-  Random.init seed;
-  Printf.printf "Initializing new %i-round game with random seed %i\n%!" rounds seed;
-  List.fold_right add_player player_files (ref State.empty)
-;;
-
-let place_players (state : State.t) =
-  List.fold_right
-    (fun (id, impl) s ->
-      let player_state = random_initial_state s in
-      let data = { state = player_state; impl } in
-      { s with living_players = Player_map.add id data s.living_players })
-    (state.players |> Player_map.bindings |> shuffle)
-    state
-;;
-
 let init_round round (state : State.t) =
-  place_players
+  State.place_players
     { state with
       round
     ; dead_players = Player_map.empty

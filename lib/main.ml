@@ -29,7 +29,7 @@ let main_loop renderer get_state =
 let main () =
   Random.self_init ();
   let rounds = 3 in
-  let state = Game.init [ "kai.lua"; "lloyd.lua" ] rounds in
+  let state = Game.State.init [ "kai.lua"; "lloyd.lua" ] rounds in
   let _ = Domain.spawn (fun _ -> Game.run state rounds) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer

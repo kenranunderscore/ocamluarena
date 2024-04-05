@@ -42,11 +42,11 @@ let player
   view_angle renderer settings player_state.pos player_state.view_direction
 ;;
 
-let players renderer (game_state : State.t) =
+let players renderer settings (game_state : State.t) =
   game_state.living_players
   |> Player_map.iter (fun _id { Game.state; impl } ->
     let module M = (val impl : PLAYER) in
-    player renderer game_state.settings M.meta state)
+    player renderer settings M.meta state)
 ;;
 
 let attack renderer (attack : Game.attack_state) =
@@ -58,7 +58,7 @@ let attacks renderer (attacks : Game.attack_state list) =
   attacks |> List.iter (attack renderer)
 ;;
 
-let scene renderer (game_state : State.t) =
-  players renderer game_state;
+let scene renderer (settings : Settings.t) (game_state : State.t) =
+  players renderer settings game_state;
   game_state.attacks |> Player_map.iter (fun _id atts -> attacks renderer atts)
 ;;

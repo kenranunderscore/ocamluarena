@@ -5,7 +5,7 @@ module State = Game.State
 
 let global_scale = 2.0
 
-let main_loop renderer get_state =
+let main_loop renderer settings get_state =
   let e = Sdl.Event.create () in
   let quit = ref false in
   Sdl.scale renderer global_scale;
@@ -21,7 +21,7 @@ let main_loop renderer get_state =
     done;
     Sdl.set_render_draw_color renderer ~red:20 ~green:20 ~blue:20;
     Sdl.render_clear renderer;
-    Render.scene renderer (get_state ());
+    Render.scene renderer settings (get_state ());
     Sdl.render_present renderer
   done
 ;;
@@ -29,12 +29,12 @@ let main_loop renderer get_state =
 let main () =
   Random.self_init ();
   let settings = Settings.make [ "kai.lua"; "lloyd.lua" ] (Random.bits ()) in
-  let state = Game.State.init settings in
-  let (_ : unit Domain.t) = Domain.spawn (fun _ -> Game.run state) in
+  let game = Game.init settings in
+  let (_ : unit Domain.t) = Domain.spawn (fun _ -> Game.run game) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer
       ~w:(Int.of_float @@ (global_scale *. settings.arena_width))
       ~h:(Int.of_float @@ (global_scale *. settings.arena_height))
       "Arena"
-      (fun _window renderer -> main_loop renderer (fun () -> !state)))
+      (fun _window renderer -> main_loop renderer settings (fun () -> !(game.state_ref))))
 ;;

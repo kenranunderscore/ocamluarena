@@ -88,37 +88,10 @@ module State = struct
         (* FIXME: players and settings should not be part of state, but rather
            "config" *)
     ; players : (module PLAYER) Player_map.t
-    ; settings : Settings.t
     ; stats : stats Player_map.t
     ; attacks : attack_state list Player_map.t
     ; round : int
     }
-
-  let random_initial_player_state state =
-    let diameter = 2. *. state.settings.player_radius in
-    let random_coord dim = dim -. (4. *. diameter) |> Random.float |> ( +. ) diameter in
-    let random_pos () =
-      Point.make
-        ~x:(random_coord state.settings.arena_width)
-        ~y:(random_coord state.settings.arena_height)
-    in
-    let is_valid p =
-      not
-        (Player_map.exists
-           (fun _id { state; _ } -> Point.dist p state.pos < 2. *. diameter)
-           state.living_players)
-    in
-    let pos = first_with random_pos is_valid in
-    let heading = Random.float Math.two_pi in
-    let view_direction = Random.float Math.two_pi in
-    { pos
-    ; heading
-    ; view_direction
-    ; hp = 100
-    ; intent = default_intent
-    ; attack_cooldown = 0
-    }
-  ;;
 
   let get_player id state =
     match Player_map.find_opt id state.living_players with
@@ -143,38 +116,65 @@ module State = struct
        };
     state_ref
   ;;
+end
 
-  let place_players state =
-    List.fold_right
-      (fun (id, impl) s ->
-        let player_state = random_initial_player_state s in
-        let data = { state = player_state; impl } in
-        { s with living_players = Player_map.add id data s.living_players })
-      (state.players |> Player_map.bindings |> shuffle)
-      state
-  ;;
+type t =
+  { state_ref : State.t ref
+  ; settings : Settings.t
+  }
 
-  let init (settings : Settings.t) =
-    let seed = settings.rng_seed in
-    Random.init seed;
-    Printf.printf
-      "Initializing new %i-round game with random seed %i\n%!"
-      settings.rounds
-      seed;
+let init (settings : Settings.t) =
+  let seed = settings.rng_seed in
+  Random.init seed;
+  Printf.printf
+    "Initializing new %i-round game with random seed %i\n%!"
+    settings.rounds
+    seed;
+  let state_ref =
     List.fold_right
-      add_player
+      State.add_player
       settings.player_files
       (ref
-         { living_players = Player_map.empty
+         { State.living_players = Player_map.empty
          ; dead_players = Player_map.empty
          ; players = Player_map.empty
-         ; settings
          ; stats = Player_map.empty
          ; attacks = Player_map.empty
          ; round = 0
          })
-  ;;
-end
+  in
+  { state_ref; settings }
+;;
+
+let random_initial_player_state (settings : Settings.t) (state : State.t) =
+  let diameter = 2. *. settings.player_radius in
+  let random_coord dim = dim -. (4. *. diameter) |> Random.float |> ( +. ) diameter in
+  let random_pos () =
+    Point.make
+      ~x:(random_coord settings.arena_width)
+      ~y:(random_coord settings.arena_height)
+  in
+  let is_valid p =
+    not
+      (Player_map.exists
+         (fun _id { state; _ } -> Point.dist p state.pos < 2. *. diameter)
+         state.living_players)
+  in
+  let pos = first_with random_pos is_valid in
+  let heading = Random.float Math.two_pi in
+  let view_direction = Random.float Math.two_pi in
+  { pos; heading; view_direction; hp = 100; intent = default_intent; attack_cooldown = 0 }
+;;
+
+let place_players (settings : Settings.t) (state : State.t) =
+  List.fold_right
+    (fun (id, impl) s ->
+      let player_state = random_initial_player_state settings s in
+      let data = { state = player_state; impl } in
+      { s with living_players = Player_map.add id data s.living_players })
+    (state.players |> Player_map.bindings |> shuffle)
+    state
+;;
 
 let players_collide player_diameter (pos1 : Point.t) pos2 =
   Point.dist pos1 pos2 <= player_diameter
@@ -642,10 +642,11 @@ let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
 (* FIXME: split settings into state and config -> Game.t containing State.t and
    Settings.t? *)
-let step (state : State.t) tick =
+let step game tick =
   (* smells like state monad *)
-  let enemy_seen_events = vision_events state.settings state in
-  let state, intent_events = apply_intents state.settings state in
+  let state = !(game.state_ref) in
+  let enemy_seen_events = vision_events game.settings state in
+  let state, intent_events = apply_intents game.settings state in
   let state, death_events = transition_hitpoints intent_events state in
   let state = distribute_death_events death_events state in
   let round_over_events =
@@ -661,11 +662,12 @@ let step (state : State.t) tick =
   let all_events =
     List.concat [ intent_events; death_events; enemy_seen_events; round_over_events ]
   in
-  distribute_events tick all_events state
+  game.state_ref := distribute_events tick all_events state
 ;;
 
-let init_round round (state : State.t) =
-  State.place_players
+let init_round round (settings : Settings.t) (state : State.t) =
+  place_players
+    settings
     { state with
       round
     ; dead_players = Player_map.empty
@@ -677,23 +679,23 @@ type round_result =
   | Round_won of (Player.Id.t * player_data)
   | Draw
 
-let run (state_ref : State.t ref) =
-  let rounds = !state_ref.settings.rounds in
-  (* TODO: measure whether just using the ref here is faster *)
-  let rec run_round tick state =
+(* TODO: maybe use a Game.t ref instead of State.t? *)
+let run game =
+  let state_ref = game.state_ref in
+  let rec run_round tick =
+    let state = !state_ref in
     if round_over state
     then (
       match round_winner state with
       | Some winner -> Round_won winner
       | None -> Draw)
     else (
-      let next_state = step state tick in
-      state_ref := next_state;
+      step game tick;
       Thread.delay 0.01;
-      run_round (tick + 1) next_state)
+      run_round (tick + 1))
   in
   let rec go round =
-    if round > rounds
+    if round > game.settings.rounds
     then (
       print_endline "GAME OVER";
       let state = !state_ref in
@@ -705,8 +707,8 @@ let run (state_ref : State.t ref) =
       (* TODO: announce (possibly multiple) winner(s) *))
     else (
       Printf.printf "Round %i starting...\n%!" round;
-      state_ref := init_round round !state_ref;
-      match run_round 0 !state_ref with
+      state_ref := init_round round game.settings !state_ref;
+      match run_round 0 with
       | Round_won (id, winner) ->
         let state = !state_ref in
         state_ref

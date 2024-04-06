@@ -106,7 +106,12 @@ module State = struct
   ;;
 
   let update_living_player id f state =
-    update_all_players (Player_map.update id (Option.map f)) state
+    update_all_players
+      (Player_map.update id (function
+        | Some p when is_alive p.player_state -> Some (f p)
+        | Some _ -> failwithf "player expected to be alive"
+        | None -> failwith "player should exist"))
+      state
   ;;
 end
 

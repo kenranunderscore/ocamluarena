@@ -43,7 +43,8 @@ let player
 ;;
 
 let players renderer (game : Game.t) =
-  game.state.living_players
+  game.state
+  |> State.living_players
   |> Player_map.iter (fun _id { Game.player_state; impl } ->
     let module M = (val impl : PLAYER) in
     player renderer game.settings M.meta player_state)

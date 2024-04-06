@@ -57,7 +57,7 @@ type player_state =
 let is_dead player_state = player_state.hp <= 0
 
 type player_data =
-  { state : player_state
+  { player_state : player_state
   ; impl : (module PLAYER)
   }
 
@@ -98,30 +98,34 @@ module State = struct
     | Some player -> player
     | None -> Player_map.find id state.dead_players
   ;;
-
-  let make_reader (id : Player.Id.t) state_ref () =
-    let player = get_player id !state_ref in
-    let { pos; heading; hp; view_direction; _ } = player.state in
-    { Player.pos; heading; hp; view_direction }
-  ;;
-
-  let add_player player_file state_ref =
-    let gs = !state_ref in
-    let new_id = 1 + (Player_map.bindings gs.players |> List.length) |> Player.Id.make in
-    let impl = Player.Lua.load player_file (make_reader new_id state_ref) in
-    state_ref
-    := { gs with
-         players = Player_map.add new_id impl gs.players
-       ; stats = Player_map.add new_id { wins = 0 } gs.stats
-       };
-    state_ref
-  ;;
 end
 
 type t =
-  { state_ref : State.t ref
+  { state : State.t
   ; settings : Settings.t
   }
+
+let make_reader (id : Player.Id.t) game_ref () =
+  let player = State.get_player id !game_ref.state in
+  let { pos; heading; hp; view_direction; _ } = player.player_state in
+  { Player.pos; heading; hp; view_direction }
+;;
+
+let add_player player_file game_ref =
+  let game = !game_ref in
+  let state = game.state in
+  let new_id = 1 + (Player_map.bindings state.players |> List.length) |> Player.Id.make in
+  let impl = Player.Lua.load player_file (make_reader new_id game_ref) in
+  game_ref
+  := { game with
+       state =
+         { state with
+           players = Player_map.add new_id impl state.players
+         ; stats = Player_map.add new_id { wins = 0 } state.stats
+         }
+     };
+  game_ref
+;;
 
 let init (settings : Settings.t) =
   let seed = settings.rng_seed in
@@ -130,20 +134,20 @@ let init (settings : Settings.t) =
     "Initializing new %i-round game with random seed %i\n%!"
     settings.rounds
     seed;
-  let state_ref =
-    List.fold_right
-      State.add_player
-      settings.player_files
-      (ref
-         { State.living_players = Player_map.empty
-         ; dead_players = Player_map.empty
-         ; players = Player_map.empty
-         ; stats = Player_map.empty
-         ; attacks = Player_map.empty
-         ; round = 0
-         })
-  in
-  { state_ref; settings }
+  List.fold_right
+    add_player
+    settings.player_files
+    (ref
+       { settings
+       ; state =
+           { State.living_players = Player_map.empty
+           ; dead_players = Player_map.empty
+           ; players = Player_map.empty
+           ; stats = Player_map.empty
+           ; attacks = Player_map.empty
+           ; round = 0
+           }
+       })
 ;;
 
 let random_initial_player_state (settings : Settings.t) (state : State.t) =
@@ -157,7 +161,7 @@ let random_initial_player_state (settings : Settings.t) (state : State.t) =
   let is_valid p =
     not
       (Player_map.exists
-         (fun _id { state; _ } -> Point.dist p state.pos < 2. *. diameter)
+         (fun _id { player_state = s; _ } -> Point.dist p s.pos < 2. *. diameter)
          state.living_players)
   in
   let pos = first_with random_pos is_valid in
@@ -170,7 +174,7 @@ let place_players (settings : Settings.t) (state : State.t) =
   List.fold_right
     (fun (id, impl) s ->
       let player_state = random_initial_player_state settings s in
-      let data = { state = player_state; impl } in
+      let data = { player_state; impl } in
       { s with living_players = Player_map.add id data s.living_players })
     (state.players |> Player_map.bindings |> shuffle)
     state
@@ -267,8 +271,8 @@ let is_valid_position
   in
   let would_hit_other_player =
     state.living_players
-    |> Player_map.exists (fun id { state; _ } ->
-      player_id <> id && players_collide player_radius p state.pos)
+    |> Player_map.exists (fun id { player_state; _ } ->
+      player_id <> id && players_collide player_radius p player_state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;
@@ -336,7 +340,7 @@ let move_heads (settings : Settings.t) (state : State.t) =
   let living_players =
     state.living_players
     |> Player_map.map (fun p ->
-      let intent = p.state.intent in
+      let intent = p.player_state.intent in
       let abs_angle = Float.abs intent.view_angle in
       let dangle =
         Math.sign intent.view_angle *. Float.min settings.max_view_turn_rate abs_angle
@@ -349,9 +353,9 @@ let move_heads (settings : Settings.t) (state : State.t) =
       let intent = { intent with view_angle = angle } in
       (* TODO: modify/set_FOO functions on state *)
       let view_direction =
-        Math.normalize_absolute_angle (p.state.view_direction +. dangle)
+        Math.normalize_absolute_angle (p.player_state.view_direction +. dangle)
       in
-      { p with state = { p.state with intent; view_direction } })
+      { p with player_state = { p.player_state with intent; view_direction } })
   in
   { state with living_players }, []
 ;;
@@ -367,7 +371,11 @@ let move_players
     state.living_players
     |> Player_map.map (fun p ->
       let move =
-        calculate_movement max_turn_rate p.state.pos p.state.heading p.state.intent
+        calculate_movement
+          max_turn_rate
+          p.player_state.pos
+          p.player_state.heading
+          p.player_state.intent
       in
       p, move)
     |> Player_map.filter (fun id (_p, move) ->
@@ -382,8 +390,8 @@ let move_players
       not @@ List.exists (fun (id', _) -> id' = id) collisions)
     |> Player_map.map (fun (p, move) ->
       { p with
-        state =
-          { p.state with
+        player_state =
+          { p.player_state with
             pos = move.position
           ; heading = move.heading
           ; intent = move.intent
@@ -401,7 +409,11 @@ let players_hit player_radius attack players =
   players
   |> Player_map.filter (fun id player ->
     id <> attack.owner
-    && Math.circles_intersect player.state.pos player_radius attack.pos attack_radius)
+    && Math.circles_intersect
+         player.player_state.pos
+         player_radius
+         attack.pos
+         attack_radius)
 ;;
 
 let transition_attacks
@@ -428,7 +440,7 @@ let transition_attacks
                     let module Victim = (val p.impl : PLAYER) in
                     let module Attacker = (val owner.impl : PLAYER) in
                     [ Player_event
-                        (attack.owner, Attack_hit (Victim.meta.name, p.state.pos))
+                        (attack.owner, Attack_hit (Victim.meta.name, p.player_state.pos))
                     ; Player_event (victim_id, Hit_by Attacker.meta.name)
                     ])
                   hits
@@ -450,21 +462,25 @@ let create_attacks (state : State.t) =
   let players_with_attacks =
     state.living_players
     |> Player_map.mapi (fun id p ->
-      match p.state.intent.attack with
-      | Some heading when p.state.attack_cooldown = 0 ->
-        let attack = { origin = p.state.pos; owner = id; pos = p.state.pos; heading } in
+      match p.player_state.intent.attack with
+      | Some heading when p.player_state.attack_cooldown = 0 ->
+        let attack =
+          { origin = p.player_state.pos; owner = id; pos = p.player_state.pos; heading }
+        in
         ( { p with
-            state =
-              { p.state with
-                intent = { p.state.intent with attack = None }
+            player_state =
+              { p.player_state with
+                intent = { p.player_state.intent with attack = None }
               ; attack_cooldown
               }
           }
         , Some attack )
       | Some _ | None ->
         ( { p with
-            state =
-              { p.state with attack_cooldown = Int.max 0 (p.state.attack_cooldown - 1) }
+            player_state =
+              { p.player_state with
+                attack_cooldown = Int.max 0 (p.player_state.attack_cooldown - 1)
+              }
           }
         , None ))
   in
@@ -522,9 +538,9 @@ let events_to_commands player events =
 ;;
 
 let update_intent player_data commands =
-  let state = player_data.state in
+  let state = player_data.player_state in
   let new_intent = determine_intent state.intent commands in
-  { player_data with state = { state with intent = new_intent } }
+  { player_data with player_state = { state with intent = new_intent } }
 ;;
 
 let sort_events events =
@@ -564,9 +580,9 @@ let transition_hitpoints events state =
             acc.living_players
             |> Player_map.update id (function
               | Some p ->
-                let hp = p.state.hp - 20 in
-                let state = { p.state with hp } in
-                Some { p with state }
+                let hp = p.player_state.hp - 20 in
+                let player_state = { p.player_state with hp } in
+                Some { p with player_state }
               | None -> failwith "impossible; player vanished")
           in
           { acc with living_players }
@@ -578,7 +594,7 @@ let transition_hitpoints events state =
   let death_events =
     state.living_players
     |> Player_map.filter_map (fun id p ->
-      if is_dead p.state then Some (Player_event (id, Death)) else None)
+      if is_dead p.player_state then Some (Player_event (id, Death)) else None)
     |> Player_map.values
   in
   state, death_events
@@ -625,12 +641,12 @@ let vision_events
          && can_spot
               ~player_angle_of_vision
               ~player_radius
-              p.state.pos
-              p.state.view_direction
-              p'.state.pos
+              p.player_state.pos
+              p.player_state.view_direction
+              p'.player_state.pos
       then
         let module M = (val p'.impl : PLAYER) in
-        Some (Player_event (id, Enemy_seen (M.meta.name, p'.state.pos)))
+        Some (Player_event (id, Enemy_seen (M.meta.name, p'.player_state.pos)))
       else None)
     |> Player_map.values)
   |> Player_map.values
@@ -640,11 +656,9 @@ let vision_events
 let round_over (state : State.t) = Player_map.cardinal state.living_players <= 1
 let round_winner (state : State.t) = Player_map.choose_opt state.living_players
 
-(* FIXME: split settings into state and config -> Game.t containing State.t and
-   Settings.t? *)
 let step game tick =
   (* smells like state monad *)
-  let state = !(game.state_ref) in
+  let state = game.state in
   let enemy_seen_events = vision_events game.settings state in
   let state, intent_events = apply_intents game.settings state in
   let state, death_events = transition_hitpoints intent_events state in
@@ -662,7 +676,7 @@ let step game tick =
   let all_events =
     List.concat [ intent_events; death_events; enemy_seen_events; round_over_events ]
   in
-  game.state_ref := distribute_events tick all_events state
+  distribute_events tick all_events state
 ;;
 
 let init_round round (settings : Settings.t) (state : State.t) =
@@ -679,26 +693,25 @@ type round_result =
   | Round_won of (Player.Id.t * player_data)
   | Draw
 
-(* TODO: maybe use a Game.t ref instead of State.t? *)
-let run game =
-  let state_ref = game.state_ref in
+let run game_ref =
   let rec run_round tick =
-    let state = !state_ref in
-    if round_over state
+    let game = !game_ref in
+    if round_over game.state
     then (
-      match round_winner state with
+      match round_winner game.state with
       | Some winner -> Round_won winner
       | None -> Draw)
     else (
-      step game tick;
+      game_ref := { !game_ref with state = step game tick };
       Thread.delay 0.01;
       run_round (tick + 1))
   in
   let rec go round =
+    let game = !game_ref in
     if round > game.settings.rounds
     then (
       print_endline "GAME OVER";
-      let state = !state_ref in
+      let state = game.state in
       state.stats
       |> Player_map.iter (fun id { wins } ->
         let p = State.get_player id state in
@@ -707,19 +720,22 @@ let run game =
       (* TODO: announce (possibly multiple) winner(s) *))
     else (
       Printf.printf "Round %i starting...\n%!" round;
-      state_ref := init_round round game.settings !state_ref;
+      game_ref := { game with state = init_round round game.settings game.state };
       match run_round 0 with
       | Round_won (id, winner) ->
-        let state = !state_ref in
-        state_ref
-        := { state with
-             stats =
-               Player_map.update
-                 id
-                 (function
-                   | Some s -> Some { wins = s.wins + 1 }
-                   | None -> failwith "stat update impossible")
-                 state.stats
+        let game = !game_ref in
+        game_ref
+        := { game with
+             state =
+               { game.state with
+                 stats =
+                   Player_map.update
+                     id
+                     (function
+                       | Some s -> Some { wins = s.wins + 1 }
+                       | None -> failwith "stat update impossible")
+                     game.state.stats
+               }
            };
         let module M = (val winner.impl : PLAYER) in
         Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;

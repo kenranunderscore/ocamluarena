@@ -6,42 +6,8 @@ let attack_cooldown = 35
 
 module type PLAYER = Player.PLAYER
 
-type movement_intent =
-  { distance : float
-  ; direction : Player.movement_direction
-  }
-
-let default_movement_intent = { distance = 0.0; direction = Forward }
-
-type intent =
-  { movement : movement_intent
-  ; turn_angle : float
-  ; view_angle : float
-  ; attack : float option
-  }
-
-let default_intent =
-  { movement = default_movement_intent
-  ; turn_angle = 0.0
-  ; view_angle = 0.0
-  ; attack = None
-  }
-;;
-
-type player_state =
-  { pos : Point.t
-  ; heading : float
-  ; view_direction : float
-  ; intent : intent
-  ; attack_cooldown : int
-  ; hp : int
-  }
-
-let is_alive player_state = player_state.hp > 0
-let is_dead player_state = not (is_alive player_state)
-
 type player_data =
-  { player_state : player_state
+  { player_state : Player_state.t
   ; impl : (module PLAYER)
   }
 
@@ -77,21 +43,22 @@ module State = struct
   let get_player id state = Players.find id state.all_players
 
   let living_players state =
-    Players.filter (fun _id p -> is_alive p.player_state) state.all_players
+    Players.filter (fun _id p -> Player_state.is_alive p.player_state) state.all_players
   ;;
 
   let update_all_players f state = { state with all_players = f state.all_players }
 
   let map_living_players f state =
     update_all_players
-      (Players.mapi (fun id p -> if is_alive p.player_state then f id p else p))
+      (Players.mapi (fun id p ->
+         if Player_state.is_alive p.player_state then f id p else p))
       state
   ;;
 
   let update_living_player id f state =
     update_all_players
       (Players.update id (function
-        | Some p when is_alive p.player_state -> Some (f p)
+        | Some p when Player_state.is_alive p.player_state -> Some (f p)
         | Some _ -> failwithf "player expected to be alive"
         | None -> failwith "player should exist"))
       state
@@ -105,7 +72,7 @@ type t =
 
 let make_reader (id : Player.Id.t) game_ref () =
   let player = State.get_player id !game_ref.state in
-  let { pos; heading; hp; view_direction; _ } = player.player_state in
+  let { Player_state.pos; heading; hp; view_direction; _ } = player.player_state in
   { Player.pos; heading; hp; view_direction }
 ;;
 
@@ -164,7 +131,13 @@ let random_initial_player_state (settings : Settings.t) (state : State.t) =
   let pos = first_with random_pos is_valid in
   let heading = Random.float Math.two_pi in
   let view_direction = Random.float Math.two_pi in
-  { pos; heading; view_direction; hp = 100; intent = default_intent; attack_cooldown = 0 }
+  { Player_state.pos
+  ; heading
+  ; view_direction
+  ; hp = 100
+  ; intent = Intent.default
+  ; attack_cooldown = 0
+  }
 ;;
 
 let players_collide player_diameter (pos1 : Point.t) pos2 =
@@ -187,7 +160,7 @@ let reduce_commands commands =
 ;;
 
 type movement_change =
-  { intent : intent
+  { intent : Intent.t
   ; position : Point.t
   ; heading : float
   }
@@ -200,7 +173,7 @@ let calculate_new_pos (p : Point.t) heading velocity =
   Point.make ~x ~y
 ;;
 
-let calculate_movement max_turn_rate (p : Point.t) old_heading intent =
+let calculate_movement max_turn_rate (p : Point.t) old_heading (intent : Intent.t) =
   let max_velocity = 1. in
   let velocity = Float.min intent.movement.distance max_velocity in
   let dangle =
@@ -223,7 +196,9 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading intent =
   let dx = sin movement_heading *. velocity in
   let dy = -.(cos movement_heading *. velocity) in
   let distance = Float.max 0. (intent.movement.distance -. velocity) in
-  let movement_intent = { distance; direction = intent.movement.direction } in
+  let movement_intent =
+    { Intent.Movement.distance; direction = intent.movement.direction }
+  in
   let x, y = p.x +. dx, p.y +. dy in
   let position = Point.make ~x ~y in
   let remaining_intent = { intent with movement = movement_intent; turn_angle } in
@@ -233,8 +208,8 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading intent =
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
     | Player.Move (direction, distance) ->
-      { intent with movement = { distance; direction } }
-    | Turn_right turn_angle -> { intent with turn_angle }
+      Intent.set_movement intent { Intent.Movement.distance; direction }
+    | Turn_right turn_angle -> { intent with Intent.turn_angle }
     | Attack heading -> { intent with attack = Some heading }
     | Look_right view_angle -> { intent with view_angle }
   in
@@ -590,7 +565,9 @@ let transition_hitpoints events state =
     state
     |> State.living_players
     |> Players.filter_map (fun id p ->
-      if is_dead p.player_state then Some (Player_event (id, Death)) else None)
+      if Player_state.is_dead p.player_state
+      then Some (Player_event (id, Death))
+      else None)
     |> Players.values
   in
   state, death_events

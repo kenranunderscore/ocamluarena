@@ -31,7 +31,7 @@ let player
   renderer
   (settings : Settings.t)
   (meta : Player.meta)
-  (player_state : Game.player_state)
+  (player_state : Player_state.t)
   =
   let { Color.red; green; blue } = meta.color in
   let p = player_state.pos in

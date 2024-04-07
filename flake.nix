@@ -4,13 +4,9 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixpkgs-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    ocaml-lua = {
-      url = "github:kenranunderscore/ocaml-lua";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, ocaml-lua }:
+  outputs = inputs@{ self, nixpkgs, flake-parts }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
         [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" "aarch64-linux" ];
@@ -23,8 +19,8 @@
             version = "git";
             src = ./.;
             buildInputs = [
-              ocaml-lua.packages.${system}.default
               ocamlPackages.alcotest
+              ocamlPackages.ocaml-lua
               ocamlPackages.ppx_deriving
               ocamlPackages.ppxlib
               ocamlPackages.tsdl

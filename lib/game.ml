@@ -542,37 +542,49 @@ let distribute_events tick events (state : State.t) =
     |> update_intent p)
 ;;
 
+module E = Effect
+module ED = Effect.Deep
+
+type _ E.t += Produce_event : targeted_event -> unit E.t
+
+let produce_event evt = E.perform (Produce_event evt)
+
 let transition_hitpoints events state =
+  let res = ref [] in
   let state =
-    List.fold_right
-      (fun evt (acc : State.t) ->
-        match evt with
-        | Global_event _ -> acc
-        | Player_event (id, Hit_by _) ->
-          State.update_living_player
-            id
-            (fun p ->
-              let hp = p.player_state.hp - 20 in
-              let player_state = { p.player_state with hp } in
-              { p with player_state })
-            acc
-        | Player_event _ -> acc)
-      events
-      state
+    ED.try_with
+      (fun _ ->
+        List.fold_right
+          (fun evt (acc : State.t) ->
+            match evt with
+            | Global_event _ -> acc
+            | Player_event (id, Hit_by _) ->
+              State.update_living_player
+                id
+                (fun p ->
+                  let hp = p.player_state.hp - 20 in
+                  let player_state = { p.player_state with hp } in
+                  if Player_state.is_dead player_state
+                  then produce_event (Player_event (id, Death));
+                  { p with player_state })
+                acc
+            | Player_event _ -> acc)
+          events
+          state)
+      ()
+      { ED.effc =
+          (fun (type a) (eff : a E.t) ->
+            match eff with
+            | Produce_event e ->
+              Some
+                (fun (k : (a, _) ED.continuation) ->
+                  res := e :: !res;
+                  E.Deep.continue k ())
+            | _ -> None)
+      }
   in
-  (* TODO: get state and events as single step *)
-  (* FIXME: don't only check living players, but pay attention to also not
-     distribute death events more than once *)
-  let death_events =
-    state
-    |> State.living_players
-    |> Players.filter_map (fun id p ->
-      if Player_state.is_dead p.player_state
-      then Some (Player_event (id, Death))
-      else None)
-    |> Players.values
-  in
-  state, death_events
+  Printf.printf "death events: %i\n%!" (List.length !res);
+  state, !res
 ;;
 
 let can_spot ~player_angle_of_vision ~player_radius p view_direction q =

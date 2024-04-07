@@ -77,7 +77,7 @@ let make_reader (id : Player.Id.t) game_ref () =
 let add_player player_file game_ref =
   let game = !game_ref in
   let state = game.state in
-  let new_id = 1 + (Players.bindings state.players |> List.length) |> Player.Id.make in
+  let new_id = 1 + Players.cardinal state.players |> Player.Id.make in
   let impl = Player.Lua.load player_file (make_reader new_id game_ref) in
   game_ref
   := { game with

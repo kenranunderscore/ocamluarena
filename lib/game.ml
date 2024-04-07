@@ -4,11 +4,9 @@ let failwithf f = Printf.ksprintf failwith f
 let attack_radius = 4.
 let attack_cooldown = 35
 
-module type PLAYER = Player.PLAYER
-
 type player_data =
   { player_state : Player_state.t
-  ; impl : (module PLAYER)
+  ; impl : Player.impl
   }
 
 type attack_state =
@@ -34,7 +32,7 @@ module State = struct
     { all_players : player_data Players.t
         (* FIXME: players and settings should not be part of state, but rather
            "config" *)
-    ; players : (module PLAYER) Players.t
+    ; players : Player.impl Players.t
     ; stats : stats Players.t
     ; attacks : attack_state list Players.t
     ; round : int
@@ -402,11 +400,9 @@ let transition_attacks
               , Players.mapi
                   (fun victim_id p ->
                     let owner = State.get_player attack.owner state in
-                    let module Victim = (val p.impl : PLAYER) in
-                    let module Attacker = (val owner.impl : PLAYER) in
                     [ Player_event
-                        (attack.owner, Attack_hit (Victim.meta.name, p.player_state.pos))
-                    ; Player_event (victim_id, Hit_by Attacker.meta.name)
+                        (attack.owner, Attack_hit (p.impl.meta.name, p.player_state.pos))
+                    ; Player_event (victim_id, Hit_by owner.impl.meta.name)
                     ])
                   hits
                 |> Players.values
@@ -493,23 +489,22 @@ let apply_intents (settings : Settings.t) state =
 
    in on_enemy_seen, make sure the data returned by me.pos(), me.x(),
    me.heading() etc. is from the same tick as the enemy information *)
-let events_to_commands player events =
-  let module M = (val player : PLAYER) in
+let events_to_commands (impl : Player.impl) events =
   events
   |> List.concat_map (function
-    | Round_started round -> M.on_round_started round
-    | Tick tick -> M.on_tick tick
-    | Enemy_seen (name, pos) -> M.on_enemy_seen name pos
-    | Attack_hit (name, pos) -> M.on_attack_hit name pos
-    | Hit_by name -> M.on_hit_by name
+    | Round_started round -> impl.on_round_started round
+    | Tick tick -> impl.on_tick tick
+    | Enemy_seen (name, pos) -> impl.on_enemy_seen name pos
+    | Attack_hit (name, pos) -> impl.on_attack_hit name pos
+    | Hit_by name -> impl.on_hit_by name
     | Death ->
-      M.on_death ();
+      impl.on_death ();
       []
     | Round_over mp ->
-      M.on_round_over mp;
+      impl.on_round_over mp;
       []
     | Round_won ->
-      M.on_round_won ();
+      impl.on_round_won ();
       [])
 ;;
 
@@ -605,9 +600,7 @@ let vision_events
               p.player_state.pos
               p.player_state.view_direction
               p'.player_state.pos
-      then
-        let module M = (val p'.impl : PLAYER) in
-        Some (Player_event (id, Enemy_seen (M.meta.name, p'.player_state.pos)))
+      then Some (Player_event (id, Enemy_seen (p'.impl.meta.name, p'.player_state.pos)))
       else None)
     |> Players.values)
   |> Players.values
@@ -628,8 +621,9 @@ let step game tick =
     then (
       match round_winner state with
       | Some (id, winner) ->
-        let module M = (val winner.impl : PLAYER) in
-        [ Global_event (Round_over (Some M.meta.name)); Player_event (id, Round_won) ]
+        [ Global_event (Round_over (Some winner.impl.meta.name))
+        ; Player_event (id, Round_won)
+        ]
       | None -> [ Global_event (Round_over None) ])
     else []
   in
@@ -663,7 +657,7 @@ let run game_ref =
       | None -> Draw)
     else (
       game_ref := { !game_ref with state = step game tick };
-      Thread.delay 0.01;
+      Thread.delay 0.03;
       run_round (tick + 1))
   in
   let rec go round =
@@ -675,8 +669,7 @@ let run game_ref =
       state.stats
       |> Players.iter (fun id { wins } ->
         let p = State.get_player id state in
-        let module M = (val p.impl : PLAYER) in
-        Printf.printf "  %s: %i wins\n%!" M.meta.name wins)
+        Printf.printf "  %s: %i wins\n%!" p.impl.meta.name wins)
       (* TODO: announce (possibly multiple) winner(s) *))
     else (
       Printf.printf "Round %i starting...\n%!" round;
@@ -697,8 +690,7 @@ let run game_ref =
                      game.state.stats
                }
            };
-        let module M = (val winner.impl : PLAYER) in
-        Printf.printf "Round %i won by '%s'!\n%!" round M.meta.name;
+        Printf.printf "Round %i won by '%s'!\n%!" round winner.impl.meta.name;
         Thread.delay 2.;
         go (round + 1)
       | Draw ->

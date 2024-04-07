@@ -33,18 +33,18 @@ module Id : sig
   val compare : t -> t -> int
 end
 
-module type PLAYER = sig
-  val meta : meta
-  val on_round_started : int -> command list
-  val on_tick : int -> command list
-  val on_enemy_seen : string -> Point.t -> command list
-  val on_attack_hit : string -> Point.t -> command list
-  val on_hit_by : string -> command list
-  val on_death : unit -> unit
-  val on_round_over : string option -> unit
-  val on_round_won : unit -> unit
-end
+type impl =
+  { meta : meta
+  ; on_round_started : int -> command list
+  ; on_tick : int -> command list
+  ; on_enemy_seen : string -> Point.t -> command list
+  ; on_attack_hit : string -> Point.t -> command list
+  ; on_hit_by : string -> command list
+  ; on_death : unit -> unit
+  ; on_round_over : string option -> unit
+  ; on_round_won : unit -> unit
+  }
 
 module Lua : sig
-  val load : string -> (unit -> player_info) -> (module PLAYER)
+  val load : string -> (unit -> player_info) -> impl
 end

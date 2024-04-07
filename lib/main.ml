@@ -1,5 +1,3 @@
-module type PLAYER = Player.PLAYER
-
 module State = Game.State
 
 let global_scale = 2.0

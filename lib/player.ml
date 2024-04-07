@@ -32,17 +32,17 @@ module Id = struct
   let make n = n
 end
 
-module type PLAYER = sig
-  val meta : meta
-  val on_round_started : int -> command list
-  val on_tick : int -> command list
-  val on_enemy_seen : string -> Point.t -> command list
-  val on_attack_hit : string -> Point.t -> command list
-  val on_hit_by : string -> command list
-  val on_death : unit -> unit
-  val on_round_over : string option -> unit
-  val on_round_won : unit -> unit
-end
+type impl =
+  { meta : meta
+  ; on_round_started : int -> command list
+  ; on_tick : int -> command list
+  ; on_enemy_seen : string -> Point.t -> command list
+  ; on_attack_hit : string -> Point.t -> command list
+  ; on_hit_by : string -> command list
+  ; on_death : unit -> unit
+  ; on_round_over : string option -> unit
+  ; on_round_won : unit -> unit
+  }
 
 type player_info =
   { hp : int
@@ -162,18 +162,17 @@ module Lua = struct
     if Lua.isnil ls (-1) then Lua.pop ls 1 else Lua.call ls 0 0
   ;;
 
-  let make_lua_player ls meta : (module PLAYER) =
-    (module struct
-      let meta = meta
-      let on_round_started round = lua_round_started ls round
-      let on_tick tick = lua_tick ls tick
-      let on_enemy_seen name pos = lua_enemy_seen ls name pos
-      let on_attack_hit name pos = lua_attack_hit ls name pos
-      let on_hit_by name = lua_hit_by ls name
-      let on_death () = lua_on_death ls
-      let on_round_over mname = lua_on_round_over ls mname
-      let on_round_won () = lua_on_round_won ls
-    end)
+  let make_lua_player ls meta =
+    { meta
+    ; on_round_started = (fun round -> lua_round_started ls round)
+    ; on_tick = (fun tick -> lua_tick ls tick)
+    ; on_enemy_seen = (fun name pos -> lua_enemy_seen ls name pos)
+    ; on_attack_hit = (fun name pos -> lua_attack_hit ls name pos)
+    ; on_hit_by = (fun name -> lua_hit_by ls name)
+    ; on_death = (fun () -> lua_on_death ls)
+    ; on_round_over = (fun mname -> lua_on_round_over ls mname)
+    ; on_round_won = (fun () -> lua_on_round_won ls)
+    }
   ;;
 
   let lua_get_color ls =

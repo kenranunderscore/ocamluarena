@@ -5,8 +5,6 @@
 
 module State = Game.State
 
-module type PLAYER = Player.PLAYER
-
 let heading renderer (settings : Settings.t) (p : Point.t) h =
   let radius = settings.player_radius in
   let len = radius +. 10. in
@@ -45,8 +43,7 @@ let players renderer (game : Game.t) =
   game.state
   |> State.living_players
   |> Players.iter (fun _id { Game.player_state; impl } ->
-    let module M = (val impl : PLAYER) in
-    player renderer game.settings M.meta player_state)
+    player renderer game.settings impl.meta player_state)
 ;;
 
 let attack renderer (attack : Game.attack_state) =

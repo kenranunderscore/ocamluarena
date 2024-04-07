@@ -561,6 +561,8 @@ let transition_hitpoints events state =
       state
   in
   (* TODO: get state and events as single step *)
+  (* FIXME: don't only check living players, but pay attention to also not
+     distribute death events more than once *)
   let death_events =
     state
     |> State.living_players

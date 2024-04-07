@@ -4,7 +4,6 @@
    per second as well. *)
 
 module State = Game.State
-module Player_map = Game.Player_map
 
 module type PLAYER = Player.PLAYER
 
@@ -45,7 +44,7 @@ let player
 let players renderer (game : Game.t) =
   game.state
   |> State.living_players
-  |> Player_map.iter (fun _id { Game.player_state; impl } ->
+  |> Players.iter (fun _id { Game.player_state; impl } ->
     let module M = (val impl : PLAYER) in
     player renderer game.settings M.meta player_state)
 ;;
@@ -61,5 +60,5 @@ let attacks renderer (attacks : Game.attack_state list) =
 
 let scene renderer (game : Game.t) =
   players renderer game;
-  game.state.attacks |> Player_map.iter (fun _id atts -> attacks renderer atts)
+  game.state.attacks |> Players.iter (fun _id atts -> attacks renderer atts)
 ;;

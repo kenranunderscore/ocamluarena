@@ -1,6 +1,5 @@
 module type PLAYER = Player.PLAYER
 
-module Player_map = Game.Player_map
 module State = Game.State
 
 let global_scale = 2.0

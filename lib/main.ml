@@ -25,7 +25,7 @@ let main_loop renderer get_game =
 
 let main () =
   Random.self_init ();
-  let settings = Settings.make [ "kai.lua"; "lloyd.lua" ] (Random.bits ()) in
+  let settings = Settings.make [ "kai.lua"; "lloyd.lua"; "nya.lua" ] (Random.bits ()) in
   let game_ref = Game.init settings in
   let (_ : unit Domain.t) = Domain.spawn (fun _ -> Game.run game_ref) in
   Sdl.with_sdl (fun () ->

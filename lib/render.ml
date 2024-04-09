@@ -51,11 +51,7 @@ let attack renderer (attack : Game.attack_state) =
   Sdl.draw_circle renderer attack.pos Game.attack_radius
 ;;
 
-let attacks renderer (attacks : Game.attack_state list) =
-  attacks |> List.iter (attack renderer)
-;;
-
 let scene renderer (game : Game.t) =
   players renderer game;
-  game.state.attacks |> Players.iter (fun _id atts -> attacks renderer atts)
+  game.state.attacks |> List.iter (attack renderer)
 ;;

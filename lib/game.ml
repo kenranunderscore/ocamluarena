@@ -34,7 +34,7 @@ module State = struct
            "config" *)
     ; players : Player.impl Players.t
     ; stats : stats Players.t
-    ; attacks : attack_state list Players.t
+    ; attacks : attack_state list
     ; round : int
     }
 
@@ -106,7 +106,7 @@ let init (settings : Settings.t) =
            { all_players = Players.empty
            ; players = Players.empty
            ; stats = Players.empty
-           ; attacks = Players.empty
+           ; attacks = []
            ; round = 0
            }
        })
@@ -384,39 +384,35 @@ let transition_attacks
   (state : State.t)
   =
   let attacks_or_events =
-    state.attacks
-    |> Players.map (fun attacks ->
-      List.fold_right
-        (fun attack ((atts, evts) as acc) ->
-          let velocity = 3. in
-          let pos = calculate_new_pos attack.pos attack.heading velocity in
-          if inside_arena ~arena_width ~arena_height pos
-          then (
-            let hits = players_hit player_radius attack (State.living_players state) in
-            if Players.is_empty hits
-            then { attack with pos } :: atts, evts
-            else
-              ( atts
-              , Players.mapi
-                  (fun victim_id p ->
-                    let owner = State.get_player attack.owner state in
-                    [ Player_event
-                        (attack.owner, Attack_hit (p.impl.meta.name, p.player_state.pos))
-                    ; Player_event (victim_id, Hit_by owner.impl.meta.name)
-                    ])
-                  hits
-                |> Players.values
-                |> List.concat
-                |> List.append evts ))
-          else acc)
-        attacks
-        ([], []))
+    List.fold_right
+      (fun attack ((atts, evts) as acc) ->
+        let velocity = 3. in
+        let pos = calculate_new_pos attack.pos attack.heading velocity in
+        if inside_arena ~arena_width ~arena_height pos
+        then (
+          let hits = players_hit player_radius attack (State.living_players state) in
+          if Players.is_empty hits
+          then { attack with pos } :: atts, evts
+          else
+            ( atts
+            , Players.mapi
+                (fun victim_id p ->
+                  let owner = State.get_player attack.owner state in
+                  (* FIXME: don't target events here!! rather just add this
+                     information to the payload *)
+                  [ Player_event
+                      (attack.owner, Attack_hit (p.impl.meta.name, p.player_state.pos))
+                  ; Player_event (victim_id, Hit_by owner.impl.meta.name)
+                  ])
+                hits
+              |> Players.values
+              |> List.concat
+              |> List.append evts ))
+        else acc)
+      state.attacks
+      ([], [])
   in
-  ( { state with attacks = Players.map fst attacks_or_events }
-  , Players.fold
-      (fun _id evts acc -> List.append evts acc)
-      (attacks_or_events |> Players.map snd)
-      [] )
+  { state with attacks = fst attacks_or_events }, snd attacks_or_events
 ;;
 
 let create_attacks (state : State.t) =
@@ -448,19 +444,9 @@ let create_attacks (state : State.t) =
   in
   (* TODO: add "attacking player" events *)
   (* TODO: add state function to add attacks *)
-  let new_attacks = players_with_attacks |> Players.filter_map (fun _id x -> snd x) in
+  let new_attacks = players_with_attacks |> Players.values |> List.filter_map snd in
   let updated_players = players_with_attacks |> Players.map fst in
-  let attacks =
-    Players.merge
-      (fun _id mprev mnew ->
-        match mprev, mnew with
-        | Some p, Some n -> Some (n :: p)
-        | Some p, None -> Some p
-        | None, Some n -> Some [ n ]
-        | None, None -> None)
-      state.attacks
-      new_attacks
-  in
+  let attacks = List.append state.attacks new_attacks in
   { state with attacks }
   |> State.update_all_players (fun ps ->
     Players.merge

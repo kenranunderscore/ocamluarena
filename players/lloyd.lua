@@ -31,7 +31,7 @@ function m.on_hit_by(name)
 end
 
 function m.on_death()
-  me.log("das war's, ich bin tot")
+  me.log("that's it, I'm dead")
 end
 
 function m.on_round_won()

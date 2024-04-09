@@ -45,6 +45,7 @@ module State = struct
   ;;
 
   let update_all_players f state = { state with all_players = f state.all_players }
+  let map_players f state = update_all_players (Players.mapi (fun id p -> f id p)) state
 
   let map_living_players f state =
     update_all_players
@@ -53,11 +54,10 @@ module State = struct
       state
   ;;
 
-  let update_living_player id f state =
+  let update_player id f state =
     update_all_players
       (Players.update id (function
-        | Some p when Player_state.is_alive p.player_state -> Some (f p)
-        | Some _ -> failwithf "player expected to be alive"
+        | Some p -> Some (f p)
         | None -> failwith "player should exist"))
       state
   ;;
@@ -511,7 +511,7 @@ let distribute_events tick events (state : State.t) =
     if tick = 0 then Global_event (Round_started state.round) :: events else events
   in
   state
-  |> State.map_living_players (fun id p ->
+  |> State.map_players (fun id p ->
     all_events
     |> List.filter_map (function
       | Global_event evt -> Some evt
@@ -524,36 +524,25 @@ let distribute_events tick events (state : State.t) =
 ;;
 
 let transition_hitpoints events state =
-  let state =
-    List.fold_right
-      (fun evt (acc : State.t) ->
-        match evt with
-        | Global_event _ -> acc
-        | Player_event (id, Hit_by _) ->
-          State.update_living_player
-            id
-            (fun p ->
-              let hp = p.player_state.hp - 20 in
-              let player_state = { p.player_state with hp } in
-              { p with player_state })
-            acc
-        | Player_event _ -> acc)
-      events
-      state
-  in
-  (* TODO: get state and events as single step *)
-  (* FIXME: don't only check living players, but pay attention to also not
-     distribute death events more than once *)
-  let death_events =
-    state
-    |> State.living_players
-    |> Players.filter_map (fun id p ->
-      if Player_state.is_dead p.player_state
-      then Some (Player_event (id, Death))
-      else None)
-    |> Players.values
-  in
-  state, death_events
+  List.fold_right
+    (fun e (((s : State.t), es) as acc) ->
+      match e with
+      | Player_event (id, Hit_by _) ->
+        let player = State.get_player id s in
+        let hp = player.player_state.hp - 20 in
+        let new_player_data =
+          { player with player_state = { player.player_state with hp } }
+        in
+        let new_events =
+          if Player_state.is_dead new_player_data.player_state
+          then Player_event (id, Death) :: es
+          else es
+        in
+        let new_state = State.update_player id (Fun.const new_player_data) s in
+        new_state, new_events
+      | Player_event _ | Global_event _ -> acc)
+    events
+    (state, [])
 ;;
 
 let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
@@ -643,7 +632,7 @@ let run game_ref =
       | None -> Draw)
     else (
       game_ref := { !game_ref with state = step game tick };
-      Thread.delay 0.03;
+      Thread.delay 0.008;
       run_round (tick + 1))
   in
   let rec go round =

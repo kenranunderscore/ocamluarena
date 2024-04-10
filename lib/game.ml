@@ -9,11 +9,14 @@ type player_data =
   ; impl : Player.impl
   }
 
+type attack_id = int
+
 type attack_state =
   { pos : Point.t
   ; heading : float
   ; origin : Point.t
   ; owner : Player.Id.t
+  ; id : attack_id
   }
 
 type stats = { wins : int }
@@ -415,6 +418,8 @@ let transition_attacks
   { state with attacks = fst attacks_or_events }, snd attacks_or_events
 ;;
 
+let inc x = x + 1
+
 let create_attacks (state : State.t) =
   let players_with_attacks =
     state
@@ -422,8 +427,16 @@ let create_attacks (state : State.t) =
     |> Players.mapi (fun id p ->
       match p.player_state.intent.attack with
       | Some heading when p.player_state.attack_cooldown = 0 ->
+        let attack_id =
+          state.attacks |> List.map (fun a -> a.id) |> List.fold_left max 0 |> inc
+        in
         let attack =
-          { origin = p.player_state.pos; owner = id; pos = p.player_state.pos; heading }
+          { origin = p.player_state.pos
+          ; owner = id
+          ; pos = p.player_state.pos
+          ; heading
+          ; id = attack_id
+          }
         in
         ( { p with
             player_state =

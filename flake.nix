@@ -36,17 +36,29 @@
             meta.mainProgram = "arena";
           };
 
-          devShells.default = pkgs.mkShell {
-            inputsFrom = [ self'.packages.default ];
-            packages = [
-              ocamlPackages.dune_3
-              ocamlPackages.findlib
-              ocamlPackages.merlin
-              ocamlPackages.ocaml
-              ocamlPackages.ocaml-lsp
-              ocamlPackages.ocamlformat
-              ocamlPackages.utop
-            ];
+          devShells = {
+            default = pkgs.mkShell {
+              inputsFrom = [ self'.packages.default ];
+              packages = [
+                ocamlPackages.dune_3
+                ocamlPackages.findlib
+                ocamlPackages.merlin
+                ocamlPackages.ocaml
+                ocamlPackages.ocaml-lsp
+                ocamlPackages.ocamlformat
+                ocamlPackages.utop
+              ];
+            };
+
+            opam = pkgs.mkShell {
+              packages = with pkgs; [
+                SDL2
+                SDL2_image
+                libffi
+                lua5_1
+                pkg-config
+              ];
+            };
           };
         };
     };

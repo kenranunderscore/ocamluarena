@@ -27,9 +27,11 @@ let command_index = function
 ;;
 
 module Id = struct
-  include Int
+  type t = int
 
   let make n = n
+  let compare = Int.compare
+  let show = Int.to_string
 end
 
 type impl =

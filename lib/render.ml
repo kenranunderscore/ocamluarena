@@ -53,5 +53,5 @@ let attack renderer (attack : Game.attack_state) =
 
 let scene renderer (game : Game.t) =
   players renderer game;
-  game.state.attacks |> List.iter (attack renderer)
+  game.state.attacks |> Game.Int_map.iter (fun _id -> attack renderer)
 ;;

@@ -31,6 +31,7 @@ module Id : sig
 
   val make : int -> t
   val compare : t -> t -> int
+  val show : t -> string
 end
 
 type impl =

@@ -79,52 +79,56 @@ module Lua = struct
   (** Read all the commands returned as the result of calling an event handler.
       This expects the returned table to be on the top of the stack. *)
   let lua_read_commands ls =
-    if Lua.istable ls (-1)
-    then (
-      match Lua.objlen ls (-1) with
-      | 0 -> []
-      | size ->
-        let rec go index cmds =
-          Lua.pushinteger ls index;
-          Lua.gettable ls (-2);
-          Lua.getfield ls (-1) "tag";
-          let cmd =
-            match Lua.tostring ls (-1) with
-            | Some "move" ->
-              Lua.pop ls 1;
-              let direction = read_direction ls in
-              Lua.getfield ls (-1) "distance";
-              let distance = Lua.tonumber ls (-1) in
-              Lua.pop ls 1;
-              Move (direction, distance)
-            | Some "attack" ->
-              Lua.pop ls 1;
-              Lua.getfield ls (-1) "heading";
-              let heading = Lua.tonumber ls (-1) in
-              Lua.pop ls 1;
-              Attack heading
-            | Some "turn_right" ->
-              Lua.pop ls 1;
-              Lua.getfield ls (-1) "angle";
-              let angle = Lua.tonumber ls (-1) in
-              Lua.pop ls 1;
-              Turn_right angle
-            | Some "look_right" ->
-              Lua.pop ls 1;
-              Lua.getfield ls (-1) "angle";
-              let angle = Lua.tonumber ls (-1) in
-              Lua.pop ls 1;
-              Look_right angle
-            | Some s -> failwithf "unknown tag: %s" s
-            | None -> failwith "no tag found"
+    let commands =
+      if Lua.istable ls (-1)
+      then (
+        match Lua.objlen ls (-1) with
+        | 0 -> []
+        | size ->
+          let rec go index cmds =
+            Lua.pushinteger ls index;
+            Lua.gettable ls (-2);
+            Lua.getfield ls (-1) "tag";
+            let cmd =
+              match Lua.tostring ls (-1) with
+              | Some "move" ->
+                Lua.pop ls 1;
+                let direction = read_direction ls in
+                Lua.getfield ls (-1) "distance";
+                let distance = Lua.tonumber ls (-1) in
+                Lua.pop ls 1;
+                Move (direction, distance)
+              | Some "attack" ->
+                Lua.pop ls 1;
+                Lua.getfield ls (-1) "heading";
+                let heading = Lua.tonumber ls (-1) in
+                Lua.pop ls 1;
+                Attack heading
+              | Some "turn_right" ->
+                Lua.pop ls 1;
+                Lua.getfield ls (-1) "angle";
+                let angle = Lua.tonumber ls (-1) in
+                Lua.pop ls 1;
+                Turn_right angle
+              | Some "look_right" ->
+                Lua.pop ls 1;
+                Lua.getfield ls (-1) "angle";
+                let angle = Lua.tonumber ls (-1) in
+                Lua.pop ls 1;
+                Look_right angle
+              | Some s -> failwithf "unknown tag: %s" s
+              | None -> failwith "no tag found"
+            in
+            (* the list *)
+            Lua.pop ls 1;
+            let new_acc = cmd :: cmds in
+            if index = size then new_acc else go (index + 1) new_acc
           in
-          (* the list *)
-          Lua.pop ls 1;
-          let new_acc = cmd :: cmds in
-          if index = size then new_acc else go (index + 1) new_acc
-        in
-        List.rev (go 1 []))
-    else []
+          List.rev (go 1 []))
+      else []
+    in
+    Lua.pop ls 1;
+    commands
   ;;
 
   let lua_tick ls tick =

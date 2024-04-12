@@ -12,6 +12,13 @@ type movement_direction =
   | Right
 [@@deriving show]
 
+let string_of_direction = function
+  | Forward -> "forward"
+  | Backward -> "backward"
+  | Left -> "left"
+  | Right -> "right"
+;;
+
 type command =
   | Move of movement_direction * float
   | Turn_right of float
@@ -54,6 +61,21 @@ type player_info =
   }
 
 module Lua = struct
+  let read_direction ls =
+    Lua.getfield ls (-1) "direction";
+    let direction =
+      match Lua.tostring ls (-1) with
+      | Some "forward" -> Forward
+      | Some "backward" -> Backward
+      | Some "left" -> Left
+      | Some "right" -> Right
+      | Some other -> failwithf "invalid direction: %s" other
+      | None -> failwith "direction not a string"
+    in
+    Lua.pop ls 1;
+    direction
+  ;;
+
   (** Read all the commands returned as the result of calling an event handler.
       This expects the returned table to be on the top of the stack. *)
   let lua_read_commands ls =
@@ -65,13 +87,41 @@ module Lua = struct
         let rec go index cmds =
           Lua.pushinteger ls index;
           Lua.gettable ls (-2);
-          match Lua.touserdata ls (-1) with
-          | Some (`Userdata cmd) ->
-            Lua.pop ls 1;
-            let new_acc = cmd :: cmds in
-            if index = size then new_acc else go (index + 1) new_acc
-          | Some _ -> failwith "lightuserdata"
-          | None -> failwith "unexpected return value"
+          Lua.getfield ls (-1) "tag";
+          let cmd =
+            match Lua.tostring ls (-1) with
+            | Some "move" ->
+              Lua.pop ls 1;
+              let direction = read_direction ls in
+              Lua.getfield ls (-1) "distance";
+              let distance = Lua.tonumber ls (-1) in
+              Lua.pop ls 1;
+              Move (direction, distance)
+            | Some "attack" ->
+              Lua.pop ls 1;
+              Lua.getfield ls (-1) "heading";
+              let heading = Lua.tonumber ls (-1) in
+              Lua.pop ls 1;
+              Attack heading
+            | Some "turn_right" ->
+              Lua.pop ls 1;
+              Lua.getfield ls (-1) "angle";
+              let angle = Lua.tonumber ls (-1) in
+              Lua.pop ls 1;
+              Turn_right angle
+            | Some "look_right" ->
+              Lua.pop ls 1;
+              Lua.getfield ls (-1) "angle";
+              let angle = Lua.tonumber ls (-1) in
+              Lua.pop ls 1;
+              Look_right angle
+            | Some s -> failwithf "unknown tag: %s" s
+            | None -> failwith "no tag found"
+          in
+          (* the list *)
+          Lua.pop ls 1;
+          let new_acc = cmd :: cmds in
+          if index = size then new_acc else go (index + 1) new_acc
         in
         List.rev (go 1 []))
     else []
@@ -247,45 +297,70 @@ module Lua = struct
       1
     ;;
 
+    let push_tag ls tag =
+      Lua.pushstring ls tag;
+      Lua.setfield ls (-2) "tag"
+    ;;
+
     let move direction ls =
       let distance = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Move (direction, distance));
+      Lua.newtable ls;
+      push_tag ls "move";
+      Lua.pushstring ls (string_of_direction direction);
+      Lua.setfield ls (-2) "direction";
+      Lua.pushnumber ls distance;
+      Lua.setfield ls (-2) "distance";
       1
     ;;
 
     let attack ls =
       let heading = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Attack heading);
+      Lua.newtable ls;
+      push_tag ls "attack";
+      Lua.pushnumber ls heading;
+      Lua.setfield ls (-2) "heading";
       1
     ;;
 
     let turn_right ls =
       let angle = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Turn_right angle);
+      Lua.newtable ls;
+      push_tag ls "turn_right";
+      Lua.pushnumber ls angle;
+      Lua.setfield ls (-2) "angle";
       1
     ;;
 
     let turn_left ls =
       let angle = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Turn_right (-.angle));
+      Lua.newtable ls;
+      push_tag ls "turn_right";
+      Lua.pushnumber ls (-.angle);
+      Lua.setfield ls (-2) "angle";
       1
     ;;
 
     let look_right ls =
       let angle = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Look_right angle);
+      Lua.newtable ls;
+      push_tag ls "look_right";
+      Lua.pushnumber ls angle;
+      Lua.setfield ls (-2) "angle";
       1
     ;;
 
     let look_left ls =
       let angle = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
-      Lua.newuserdata ls (Look_right (-.angle));
+      Lua.newtable ls;
+      push_tag ls "look_right";
+      Lua.pushnumber ls (-.angle);
+      Lua.setfield ls (-2) "angle";
       1
     ;;
 

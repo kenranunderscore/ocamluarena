@@ -16,6 +16,7 @@ depends: [
   "tsdl"
   "tsdl-image"
   "ocaml-lua"
+  "alcotest"
   "odoc" {with-doc}
 ]
 build: [

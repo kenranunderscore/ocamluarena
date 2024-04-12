@@ -19,7 +19,6 @@
             version = "git";
             src = ./.;
             buildInputs = [
-              ocamlPackages.alcotest
               ocamlPackages.ocaml-lua
               ocamlPackages.ppx_deriving
               ocamlPackages.ppxlib
@@ -31,6 +30,7 @@
               pkgs.lua5_1
               pkgs.pkg-config
             ];
+            checkInputs = [ ocamlPackages.alcotest ];
             doCheck = true;
 
             meta.mainProgram = "arena";

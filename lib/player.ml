@@ -211,100 +211,113 @@ module Lua = struct
     else failwithf "player could not be loaded: '%s'\n%!" path
   ;;
 
+  module Api = struct
+    let x get_player_info ls =
+      Lua.pushnumber ls (get_player_info ()).pos.x;
+      1
+    ;;
+
+    let y get_player_info ls =
+      Lua.pushnumber ls (get_player_info ()).pos.y;
+      1
+    ;;
+
+    let position get_player_info ls =
+      let p = (get_player_info ()).pos in
+      Lua.newtable ls;
+      Lua.pushnumber ls p.x;
+      Lua.setfield ls (-2) "x";
+      Lua.pushnumber ls p.y;
+      Lua.setfield ls (-2) "y";
+      1
+    ;;
+
+    let heading get_player_info ls =
+      Lua.pushnumber ls (get_player_info ()).heading;
+      1
+    ;;
+
+    let view_direction get_player_info ls =
+      Lua.pushnumber ls (get_player_info ()).view_direction;
+      1
+    ;;
+
+    let hp get_player_info ls =
+      Lua.pushinteger ls (get_player_info ()).hp;
+      1
+    ;;
+
+    let move direction ls =
+      let distance = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Move (direction, distance));
+      1
+    ;;
+
+    let attack ls =
+      let heading = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Attack heading);
+      1
+    ;;
+
+    let turn_right ls =
+      let angle = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Turn_right angle);
+      1
+    ;;
+
+    let turn_left ls =
+      let angle = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Turn_right (-.angle));
+      1
+    ;;
+
+    let look_right ls =
+      let angle = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Look_right angle);
+      1
+    ;;
+
+    let look_left ls =
+      let angle = Lua.tonumber ls (-1) in
+      Lua.pop ls 1;
+      Lua.newuserdata ls (Look_right (-.angle));
+      1
+    ;;
+
+    let log name ls =
+      (match Lua.tostring ls (-1) with
+       | Some msg -> Printf.printf "[%s] %s\n%!" name msg
+       | None -> ());
+      Lua.pop ls 1;
+      0
+    ;;
+  end
+
   let create_lua_api ls meta get_player_info =
     Lua.pushmodule
       ls
       "me"
-      [ ( "x"
-        , fun l ->
-            Lua.pushnumber l (get_player_info ()).pos.x;
-            1 )
-      ; ( "y"
-        , fun l ->
-            Lua.pushnumber l (get_player_info ()).pos.y;
-            1 )
-      ; ( "position"
-        , fun l ->
-            let p = (get_player_info ()).pos in
-            Lua.newtable l;
-            Lua.pushnumber l p.x;
-            Lua.setfield l (-2) "x";
-            Lua.pushnumber l p.y;
-            Lua.setfield l (-2) "y";
-            1 )
-      ; ( "heading"
-        , fun l ->
-            Lua.pushnumber l (get_player_info ()).heading;
-            1 )
-      ; ( "view_direction"
-        , fun l ->
-            Lua.pushnumber l (get_player_info ()).view_direction;
-            1 )
-      ; ( "hp"
-        , fun l ->
-            Lua.pushinteger l (get_player_info ()).hp;
-            1 )
-      ; ( "move_forward"
-        , fun l ->
-            let distance = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Move (Forward, distance));
-            1 )
-      ; ( "move_backward"
-        , fun l ->
-            let distance = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Move (Backward, distance));
-            1 )
-      ; ( "move_left"
-        , fun l ->
-            let distance = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Move (Left, distance));
-            1 )
-      ; ( "move_right"
-        , fun l ->
-            let distance = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Move (Right, distance));
-            1 )
-      ; ( "attack"
-        , fun l ->
-            let heading = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Attack heading);
-            1 )
-      ; ( "turn_right"
-        , fun l ->
-            let angle = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Turn_right angle);
-            1 )
-      ; ( "turn_left"
-        , fun l ->
-            let angle = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Turn_right (-.angle));
-            1 )
-      ; ( "look_right"
-        , fun l ->
-            let angle = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Look_right angle);
-            1 )
-      ; ( "look_left"
-        , fun l ->
-            let angle = Lua.tonumber l (-1) in
-            Lua.pop l 1;
-            Lua.newuserdata l (Look_right (-.angle));
-            1 )
-      ; ( "log"
-        , fun l ->
-            (match Lua.tostring l (-1) with
-             | Some msg -> Printf.printf "[%s] %s\n%!" meta.name msg
-             | None -> ());
-            Lua.pop l 1;
-            0 )
+      [ "x", Api.x get_player_info
+      ; "y", Api.y get_player_info
+      ; "position", Api.position get_player_info
+      ; "heading", Api.heading get_player_info
+      ; "view_direction", Api.view_direction get_player_info
+      ; "hp", Api.hp get_player_info
+      ; "move_forward", Api.move Forward
+      ; "move_backward", Api.move Backward
+      ; "move_left", Api.move Left
+      ; "move_right", Api.move Right
+      ; "attack", Api.attack
+      ; "turn_right", Api.turn_right
+      ; "turn_left", Api.turn_left
+      ; "look_right", Api.look_right
+      ; "look_left", Api.look_left
+      ; "log", Api.log meta.name
       ]
   ;;
 

@@ -262,7 +262,7 @@ let is_valid_position
   let would_hit_other_player =
     State.living_players state
     |> Players.exists (fun id { player_state; _ } ->
-      player_id <> id && players_collide player_radius p player_state.pos)
+      player_id <> id && players_collide (2. *. player_radius) p player_state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;

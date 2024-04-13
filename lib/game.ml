@@ -209,7 +209,7 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading (intent : Intent.
     then 0.
     else intent.turn_angle +. dangle
   in
-  let heading = old_heading +. dangle in
+  let heading = Math.normalize_absolute_angle (old_heading +. dangle) in
   let dir_heading =
     match intent.movement.direction with
     | Player.Forward -> 0.

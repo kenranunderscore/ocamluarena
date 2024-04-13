@@ -550,16 +550,19 @@ let update_intent player_data commands =
   { player_data with player_state = { state with intent = new_intent } }
 ;;
 
-let player_events_from_game_events player_id game_events =
+let player_events_from_game_events player_id player game_events =
   List.fold_left
     (fun acc -> function
       | Tick tick -> Player_event.Tick tick :: acc
-      | Hit (_id, owner, victim, pos) ->
-        if player_id = owner
-        then Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
-        else if player_id = victim
-        then Player_event.Hit_by (Player.Id.show owner) :: acc
+      | Hit (_id, owner, victim, pos) when player_id = owner ->
+        Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
+      | Hit (_id, owner, victim, _pos) when player_id = victim ->
+        let acc = Player_event.Hit_by (Player.Id.show owner) :: acc in
+        (* TODO: deduplicate *)
+        if Player_state.is_dead player.player_state
+        then Player_event.Death :: acc
         else acc
+      | Hit _ -> acc
       | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
       | Head_turned _ | Player_moved _ -> acc)
     []
@@ -590,7 +593,9 @@ let distribute_player_events game_events game =
         |> Players.values
       in
       let player_events =
-        game_events |> player_events_from_game_events id |> List.append enemy_seen_events
+        game_events
+        |> player_events_from_game_events id p
+        |> List.append enemy_seen_events
       in
       read_player_commands p.impl player_events |> update_intent p)
     game.state

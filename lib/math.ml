@@ -21,7 +21,7 @@ let rec normalize_absolute_angle = function
 ;;
 
 let normalize_relative_angle = function
-  | angle when angle >= 0. && angle < Float.pi -> angle
+  | angle when angle >= -.Float.pi && angle < Float.pi -> angle
   | angle ->
     let abs = normalize_absolute_angle angle in
     if abs >= Float.pi then abs -. two_pi else abs

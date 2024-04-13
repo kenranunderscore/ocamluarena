@@ -550,17 +550,30 @@ let update_intent player_data commands =
   { player_data with player_state = { state with intent = new_intent } }
 ;;
 
+let player_events_from_game_events player_id game_events =
+  List.fold_left
+    (fun acc -> function
+      | Tick tick -> Player_event.Tick tick :: acc
+      | Hit (_id, owner, victim, pos) ->
+        if player_id = owner
+        then Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
+        else if player_id = victim
+        then Player_event.Hit_by (Player.Id.show owner) :: acc
+        else acc
+      | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
+      | Head_turned _ | Player_moved _ -> acc)
+    []
+    game_events
+;;
+
 (* TODO: vision events should probably be based on the state before any
    movement? *)
-let distribute_player_events
-  game_events
-  ({ player_angle_of_vision; player_radius; _ } : Settings.t)
-  (state : State.t)
-  =
+let distribute_player_events game_events game =
+  let { Settings.player_angle_of_vision; player_radius; _ } = game.settings in
   State.map_players
     (fun id p ->
       let visible_players =
-        State.living_players state
+        State.living_players game.state
         |> Players.filter (fun other_id other_p ->
           id <> other_id
           && can_spot
@@ -570,32 +583,17 @@ let distribute_player_events
                p.player_state.view_direction
                other_p.player_state.pos)
       in
+      let enemy_seen_events =
+        visible_players
+        |> Players.map (fun target ->
+          Player_event.Enemy_seen (target.impl.meta.name, target.player_state.pos))
+        |> Players.values
+      in
       let player_events =
-        List.fold_left
-          (fun acc -> function
-            | Tick tick ->
-              let acc = Player_event.Tick tick :: acc in
-              (* TODO: seen events should not be part of tick, but outside *)
-              let enemy_seen_events =
-                visible_players
-                |> Players.map (fun target ->
-                  Player_event.Enemy_seen (target.impl.meta.name, target.player_state.pos))
-                |> Players.values
-              in
-              List.append enemy_seen_events acc
-            | Hit (_id, owner, victim, pos) ->
-              if id = owner
-              then Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
-              else if id = victim
-              then Player_event.Hit_by (Player.Id.show owner) :: acc
-              else acc
-            | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
-            | Head_turned _ | Player_moved _ -> acc)
-          []
-          game_events
+        game_events |> player_events_from_game_events id |> List.append enemy_seen_events
       in
       read_player_commands p.impl player_events |> update_intent p)
-    state
+    game.state
 ;;
 
 let update_state f game = { game with state = f game }
@@ -603,11 +601,9 @@ let update_state f game = { game with state = f game }
 let step game =
   (* TODO: think about order of "things that must happen" with tick 0 in mind *)
   let game_events = determine_game_events game.settings game.state in
-  let game = { game with state = process_game_events game_events game } in
-  let game =
-    { game with state = distribute_player_events game_events game.settings game.state }
-  in
   game
+  |> update_state (process_game_events game_events)
+  |> update_state (distribute_player_events game_events)
 ;;
 
 let init_round round (settings : Settings.t) (state : State.t) =

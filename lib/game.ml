@@ -34,16 +34,21 @@ let shuffle xs =
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
+type round_state =
+  | Ongoing
+  | Won of player_id
+  | Draw
+
 module State = struct
   type t =
     { all_players : player_data Players.t
-        (* FIXME: players and settings should not be part of state, but rather
-           "config" *)
+        (* FIXME: players should not be part of state, but rather "config", or
+           just closed over *)
     ; players : Player.impl Players.t
-    ; stats : stats Players.t
     ; attacks : attack_state Int_map.t
     ; round : int
     ; tick : int
+    ; round_state : round_state
     }
 
   let get_player id state = Players.find id state.all_players
@@ -106,13 +111,7 @@ let add_player player_file game_ref =
   let new_id = 1 + Players.cardinal state.players |> Player.Id.make in
   let impl = Player.Lua.load player_file (make_reader new_id game_ref) in
   game_ref
-  := { game with
-       state =
-         { state with
-           players = Players.add new_id impl state.players
-         ; stats = Players.add new_id { wins = 0 } state.stats
-         }
-     };
+  := { game with state = { state with players = Players.add new_id impl state.players } };
   game_ref
 ;;
 
@@ -131,10 +130,10 @@ let init (settings : Settings.t) =
        ; state =
            { all_players = Players.empty
            ; players = Players.empty
-           ; stats = Players.empty
            ; attacks = Int_map.empty
            ; round = 0
            ; tick = 0
+           ; round_state = Ongoing
            }
        })
 ;;
@@ -292,6 +291,8 @@ let find_colliding_players player_diameter positions =
 ;;
 
 type game_event =
+  | Round_started of int
+  | Round_over of player_id option
   | Tick of int
   | Hit of attack_id * player_id * player_id * Point.t
   | Attack_missed of attack_id
@@ -301,6 +302,8 @@ type game_event =
   | Player_moved of player_id * movement_change
 
 let game_event_index = function
+  | Round_started _ -> -2
+  | Round_over _ -> -1
   | Tick _ -> 0
   | Hit _ -> 1
   | Attack_missed _ -> 2
@@ -444,13 +447,31 @@ let create_attacks (state : State.t) =
   |> Players.values
 ;;
 
+let tick_events (state : State.t) =
+  let events = [ Tick state.tick ] in
+  if state.tick = 0 then Round_started state.round :: events else events
+;;
+
+let round_over (state : State.t) = Players.cardinal (State.living_players state) <= 1
+let round_winner (state : State.t) = Players.choose_opt (State.living_players state)
+
+let check_for_round_end = function
+  | state when round_over state ->
+    [ (match round_winner state with
+       | Some (id, _) -> Round_over (Some id)
+       | None -> Round_over None)
+    ]
+  | _ -> []
+;;
+
 let determine_game_events (settings : Settings.t) (state : State.t) =
   List.concat
-    [ [ Tick (state.tick + 1) ]
+    [ tick_events state
     ; move_heads settings state
     ; move_players settings state
     ; transition_attacks settings state
     ; create_attacks state
+    ; check_for_round_end state
     ]
   |> sort_game_events
 ;;
@@ -469,16 +490,16 @@ let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
   || (alpha_left <= left && alpha_right >= right)
 ;;
 
-let round_over (state : State.t) = Players.cardinal (State.living_players state) <= 1
-let round_winner (state : State.t) = Players.choose_opt (State.living_players state)
-
 let process_game_events events game =
   List.fold_left
     (fun (state : State.t) -> function
+      | Round_started _round -> state
+      | Round_over (Some id) -> { state with round_state = Won id }
+      | Round_over None -> { state with round_state = Draw }
       | Tick tick ->
         (* TODO: don't hold the cooldown information, rather the tick when
            attacking is possible again *)
-        { state with tick }
+        { state with tick = tick + 1 }
         |> State.map_living_players (fun _id p ->
           let player_state =
             { p.player_state with
@@ -553,6 +574,12 @@ let update_intent player_data commands =
 let player_events_from_game_events player_id player game_events =
   List.fold_left
     (fun acc -> function
+      | Round_started round -> Player_event.Round_started round :: acc
+      | Round_over (Some id) when id = player_id -> Player_event.Round_won :: acc
+      | Round_over mwinner ->
+        (* TODO: name/id after meta rework *)
+        let name = Option.map Player.Id.show mwinner in
+        Player_event.Round_over name :: acc
       | Tick tick -> Player_event.Tick tick :: acc
       | Hit (_id, owner, victim, pos) when player_id = owner ->
         Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
@@ -611,69 +638,44 @@ let step game =
   |> update_state (distribute_player_events game_events)
 ;;
 
-let init_round round (settings : Settings.t) (state : State.t) =
+let init_round round game =
   List.fold_right
     (fun (id, impl) s ->
-      let player_state = random_initial_player_state settings s in
+      let player_state = random_initial_player_state game.settings s in
       let data = { player_state; impl } in
       { s with all_players = Players.add id data s.all_players })
-    (state.players |> Players.bindings |> shuffle)
-    { state with tick = 0; round; all_players = Players.empty }
+    (game.state.players |> Players.bindings |> shuffle)
+    { game.state with
+      tick = 0
+    ; round
+    ; all_players = Players.empty
+    ; round_state = Ongoing
+    }
 ;;
 
-type round_result =
-  | Round_won of (player_id * player_data)
-  | Draw
-
 let run game_ref =
-  let rec run_round tick =
-    let game = !game_ref in
-    if round_over game.state
-    then (
-      match round_winner game.state with
-      | Some winner -> Round_won winner
-      | None -> Draw)
-    else (
-      game_ref := step game;
+  let rec run_round () =
+    game_ref := step !game_ref;
+    match !game_ref.state.round_state with
+    | Ongoing ->
       Thread.delay 0.008;
-      run_round (tick + 1))
+      run_round ()
+    | Draw ->
+      print_endline "-- DRAW --";
+      Thread.delay 2.
+    | Won id ->
+      Printf.printf "-- WINNER: %s --\n%!" (Player.Id.show id);
+      Thread.delay 2.
   in
   let rec go round =
     let game = !game_ref in
     if round > game.settings.rounds
-    then (
-      print_endline "GAME OVER";
-      let state = game.state in
-      state.stats
-      |> Players.iter (fun id { wins } ->
-        let p = State.get_player id state in
-        Printf.printf "  %s: %i wins\n%!" p.impl.meta.name wins)
-      (* TODO: announce (possibly multiple) winner(s) *))
+    then print_endline "== GAME OVER =="
     else (
       Printf.printf "Round %i starting...\n%!" round;
-      game_ref := { game with state = init_round round game.settings game.state };
-      match run_round 0 with
-      | Round_won (id, winner) ->
-        let game = !game_ref in
-        game_ref
-        := { game with
-             state =
-               { game.state with
-                 stats =
-                   Players.update
-                     id
-                     (function
-                       | Some s -> Some { wins = s.wins + 1 }
-                       | None -> failwith "stat update impossible")
-                     game.state.stats
-               }
-           };
-        Printf.printf "Round %i won by '%s'!\n%!" round winner.impl.meta.name;
-        Thread.delay 2.;
-        go (round + 1)
-      | Draw ->
-        Printf.printf "Round %i ended in a draw!\n%!" round;
-        go (round + 1))
+      game_ref := update_state (init_round round) !game_ref;
+      run_round ();
+      go (round + 1))
   in
   go 1
 ;;

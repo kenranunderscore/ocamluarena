@@ -218,14 +218,11 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading (intent : Intent.
     | Right -> Math.half_pi
   in
   let movement_heading = heading +. dir_heading in
-  let dx = sin movement_heading *. velocity in
-  let dy = -.(cos movement_heading *. velocity) in
   let distance = Float.max 0. (intent.movement.distance -. velocity) in
   let movement_intent =
     { Intent.Movement.distance; direction = intent.movement.direction }
   in
-  let x, y = p.x +. dx, p.y +. dy in
-  let position = Point.make ~x ~y in
+  let position = calculate_new_pos p movement_heading velocity in
   { remaining_movement_intent = movement_intent
   ; remaining_turn_angle = turn_angle
   ; position

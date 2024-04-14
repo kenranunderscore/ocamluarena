@@ -7,6 +7,7 @@ type t =
   ; max_view_turn_rate : float
   ; rounds : int
   ; rng_seed : int
+  ; player_directory : string
   }
 [@@deriving show]
 
@@ -19,5 +20,6 @@ let make rng_seed =
   ; max_view_turn_rate = Math.to_radians 10.
   ; rounds = 3
   ; rng_seed
+  ; player_directory = "./players"
   }
 ;;

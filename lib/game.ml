@@ -99,19 +99,24 @@ type t =
   ; settings : Settings.t
   }
 
+let update_state_with_settings f game = { game with state = f game }
+let update_state f game = { game with state = f game.state }
+
 let make_reader (id : player_id) game_ref () =
   let player = State.get_player id !game_ref.state in
   let { Player_state.pos; heading; hp; view_direction; _ } = player.player_state in
   { Player.pos; heading; hp; view_direction }
 ;;
 
-let add_player player_file game_ref =
+let add_player player_directory player_file game_ref =
   let game = !game_ref in
   let state = game.state in
   let new_id = 1 + Players.cardinal state.players |> Player.Id.make in
-  let impl = Player.Lua.load player_file (make_reader new_id game_ref) in
+  let path = player_directory ^ "/" ^ player_file in
+  let impl = Player.Lua.load path (make_reader new_id game_ref) in
   game_ref
-  := { game with state = { state with players = Players.add new_id impl state.players } };
+  := game
+     |> update_state (fun s -> { s with players = Players.add new_id impl state.players });
   game_ref
 ;;
 
@@ -123,7 +128,7 @@ let init (settings : Settings.t) player_files =
     settings.rounds
     seed;
   List.fold_right
-    add_player
+    (add_player settings.player_directory)
     player_files
     (ref
        { settings
@@ -625,14 +630,12 @@ let distribute_player_events game_events game =
     game.state
 ;;
 
-let update_state f game = { game with state = f game }
-
 let step game =
   (* TODO: think about order of "things that must happen" with tick 0 in mind *)
   let game_events = determine_game_events game.settings game.state in
   game
-  |> update_state (process_game_events game_events)
-  |> update_state (distribute_player_events game_events)
+  |> update_state_with_settings (process_game_events game_events)
+  |> update_state_with_settings (distribute_player_events game_events)
 ;;
 
 let init_round round game =
@@ -670,7 +673,7 @@ let run game_ref =
     then print_endline "== GAME OVER =="
     else (
       Printf.printf "Round %i starting...\n%!" round;
-      game_ref := update_state (init_round round) !game_ref;
+      game_ref := update_state_with_settings (init_round round) !game_ref;
       run_round ();
       go (round + 1))
   in

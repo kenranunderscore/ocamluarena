@@ -401,7 +401,7 @@ module Lua = struct
   ;;
 
   let load path get_player_info =
-    let meta, lua_state = lua_load_player_from_file ("players/" ^ path) in
+    let meta, lua_state = lua_load_player_from_file path in
     create_lua_api lua_state meta get_player_info;
     make_lua_player lua_state meta
   ;;

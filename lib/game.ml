@@ -115,7 +115,7 @@ let add_player player_file game_ref =
   game_ref
 ;;
 
-let init (settings : Settings.t) =
+let init (settings : Settings.t) player_files =
   let seed = settings.rng_seed in
   Random.init seed;
   Printf.printf
@@ -124,7 +124,7 @@ let init (settings : Settings.t) =
     seed;
   List.fold_right
     add_player
-    settings.player_files
+    player_files
     (ref
        { settings
        ; state =

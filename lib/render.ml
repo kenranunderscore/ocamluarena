@@ -28,7 +28,7 @@ let view_angle renderer (settings : Settings.t) (p : Point.t) angle =
 let player
   renderer
   (settings : Settings.t)
-  (meta : Player.meta)
+  (meta : Player.t)
   (player_state : Player_state.t)
   =
   let { Color.red; green; blue } = meta.color in

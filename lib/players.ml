@@ -1,10 +1,4 @@
-include Map.Make (struct
-    type t = Player.meta
-
-    let compare (meta1 : Player.meta) (meta2 : Player.meta) =
-      String.compare meta1.name meta2.name
-    ;;
-  end)
+include Map.Make (Player)
 
 let difference m1 m2 =
   merge

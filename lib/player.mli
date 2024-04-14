@@ -1,13 +1,10 @@
-type meta =
+type t =
   { name : string
   ; color : Color.t
   ; version : string
   }
 
-type description =
-  { directory : string
-  ; meta : meta
-  }
+val compare : t -> t -> int
 
 type movement_direction =
   | Forward
@@ -52,6 +49,6 @@ type impl =
   }
 
 module Lua : sig
-  val load : string -> string -> (unit -> player_info) -> impl
-  val read_meta : string -> meta option
+  val load_implementation : string -> string -> (unit -> player_info) -> impl
+  val read_meta : string -> t option
 end

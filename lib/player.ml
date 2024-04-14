@@ -1,15 +1,12 @@
 let failwithf f = Printf.ksprintf failwith f
 
-type meta =
+type t =
   { name : string
   ; color : Color.t
   ; version : string
   }
 
-type description =
-  { directory : string
-  ; meta : meta
-  }
+let compare p1 p2 = String.compare p1.name p2.name
 
 type movement_direction =
   | Forward
@@ -47,6 +44,7 @@ module Id = struct
   let show = Int.to_string
 end
 
+(* TODO: replace strings with t's *)
 type impl =
   { on_round_started : int -> command list
   ; on_tick : int -> command list
@@ -393,7 +391,7 @@ module Lua = struct
       ]
   ;;
 
-  let load path name get_player_info =
+  let load_implementation path name get_player_info =
     let lua_state = lua_load_player_from_file path in
     create_lua_api lua_state name get_player_info;
     make_lua_player lua_state

@@ -33,7 +33,7 @@ let discover_players dir =
     match Player.Lua.read_meta d with
     | Some meta ->
       print_endline meta.version;
-      Some { Player.meta; directory = d }
+      Some (meta, d)
     | None ->
       print_endline "NOPE";
       None)

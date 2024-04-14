@@ -3,6 +3,12 @@ let failwithf f = Printf.ksprintf failwith f
 type meta =
   { name : string
   ; color : Color.t
+  ; version : string
+  }
+
+type description =
+  { directory : string
+  ; meta : meta
   }
 
 type movement_direction =
@@ -42,8 +48,7 @@ module Id = struct
 end
 
 type impl =
-  { meta : meta
-  ; on_round_started : int -> command list
+  { on_round_started : int -> command list
   ; on_tick : int -> command list
   ; on_enemy_seen : string -> Point.t -> command list
   ; on_attack_hit : string -> Point.t -> command list
@@ -218,9 +223,8 @@ module Lua = struct
     if Lua.isnil ls (-1) then Lua.pop ls 1 else Lua.call ls 0 0
   ;;
 
-  let make_lua_player ls meta =
-    { meta
-    ; on_round_started = (fun round -> lua_round_started ls round)
+  let make_lua_player ls =
+    { on_round_started = (fun round -> lua_round_started ls round)
     ; on_tick = (fun tick -> lua_tick ls tick)
     ; on_enemy_seen = (fun name pos -> lua_enemy_seen ls name pos)
     ; on_attack_hit = (fun name pos -> lua_attack_hit ls name pos)
@@ -232,7 +236,7 @@ module Lua = struct
   ;;
 
   let lua_get_color ls =
-    Lua.getfield ls (-1) "color";
+    Lua.getglobal ls "color";
     Lua.getfield ls (-1) "red";
     let red = Lua.tointeger ls (-1) in
     Lua.getfield ls (-2) "green";
@@ -250,18 +254,7 @@ module Lua = struct
     if Lua.dofile ls path
     then (
       Printf.printf "loading player from '%s'...\n%!" path;
-      Lua.getfield ls (-1) "meta";
-      Lua.getfield ls (-1) "name";
-      match Lua.tostring ls (-1) with
-      | None -> failwithf "player.meta.name missing\n%!"
-      | Some name ->
-        (* pop the 'name' *)
-        Lua.pop ls 1;
-        let color = lua_get_color ls in
-        (* pop the 'meta' table *)
-        Lua.pop ls 1;
-        let meta = { name; color } in
-        meta, ls)
+      ls)
     else failwithf "player could not be loaded: '%s'\n%!" path
   ;;
 
@@ -377,7 +370,7 @@ module Lua = struct
     ;;
   end
 
-  let create_lua_api ls meta get_player_info =
+  let create_lua_api ls name get_player_info =
     Lua.pushmodule
       ls
       "me"
@@ -396,13 +389,37 @@ module Lua = struct
       ; "turn_left", Api.turn_left
       ; "look_right", Api.look_right
       ; "look_left", Api.look_left
-      ; "log", Api.log meta.name
+      ; "log", Api.log name
       ]
   ;;
 
-  let load path get_player_info =
-    let meta, lua_state = lua_load_player_from_file path in
-    create_lua_api lua_state meta get_player_info;
-    make_lua_player lua_state meta
+  let load path name get_player_info =
+    let lua_state = lua_load_player_from_file path in
+    create_lua_api lua_state name get_player_info;
+    make_lua_player lua_state
+  ;;
+
+  let read_meta dir =
+    let ls = Lua.newstate () in
+    if Lua.dofile ls (Filename.concat dir "meta.lua")
+    then (
+      Lua.getglobal ls "name";
+      let name =
+        match Lua.tostring ls (-1) with
+        | Some name -> name
+        | None -> failwith "FIXME: fail gracefully"
+      in
+      Lua.pop ls 1;
+      Lua.getglobal ls "version";
+      let version =
+        match Lua.tostring ls (-1) with
+        | Some version -> version
+        | None -> failwith "FIXME: version failure"
+      in
+      print_endline "done file";
+      (* TODO: default color *)
+      let color = lua_get_color ls in
+      Some { name; color; version })
+    else None
   ;;
 end

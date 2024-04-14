@@ -42,8 +42,8 @@ let player
 let players renderer (game : Game.t) =
   game.state
   |> State.living_players
-  |> Players.iter (fun _id { Game.player_state; impl } ->
-    player renderer game.settings impl.meta player_state)
+  |> Players.iter (fun p { Game.player_state; _ } ->
+    player renderer game.settings p player_state)
 ;;
 
 let attack renderer (attack : Game.attack_state) =

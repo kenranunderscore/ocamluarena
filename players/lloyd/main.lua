@@ -1,10 +1,5 @@
 local m = {}
 
--- TODO: instead of a module with the 'meta' attribute, we could have a function
--- 'register' that would return the whole bot, that is, including event
--- handlers?
-m.meta = { name = "Lloyd", color = { red = 20, green = 230, blue = 10 } }
-
 function m.on_round_started(n)
   me.log("Yay, new round new luck!")
 end

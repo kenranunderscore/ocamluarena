@@ -23,10 +23,27 @@ let main_loop renderer get_game =
   done
 ;;
 
+let discover_players dir =
+  dir
+  |> Sys.readdir
+  |> Array.to_list
+  |> List.map (Filename.concat dir)
+  |> List.filter Sys.is_directory
+  |> List.filter_map (fun d ->
+    match Player.Lua.read_meta d with
+    | Some meta ->
+      print_endline meta.version;
+      Some { Player.meta; directory = d }
+    | None ->
+      print_endline "NOPE";
+      None)
+;;
+
 let main () =
   Random.self_init ();
   let settings = Settings.make (Random.bits ()) in
-  let game_ref = Game.init settings [ "kai.lua"; "lloyd.lua"; "nya.lua" ] in
+  let players = discover_players settings.player_directory in
+  let game_ref = Game.init settings players in
   let (_ : unit Domain.t) = Domain.spawn (fun _ -> Game.run game_ref) in
   Sdl.with_sdl (fun () ->
     Sdl.with_window_and_renderer

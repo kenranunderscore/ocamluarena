@@ -10,7 +10,6 @@ type player_data =
   }
 
 (* TODO: newtypes? records or single-constructor variants? *)
-type player_id = Player.Id.t
 type heading = float
 type attack_id = int
 
@@ -18,7 +17,7 @@ type attack_state =
   { pos : Point.t
   ; heading : heading
   ; origin : Point.t
-  ; owner : player_id
+  ; owner : Player.meta
   }
 
 module Int_map = Map.Make (Int)
@@ -31,12 +30,13 @@ let rec first_with f pred =
 ;;
 
 let shuffle xs =
+  (* TODO: compare good? *)
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
 type round_state =
   | Ongoing
-  | Won of player_id
+  | Won of Player.meta
   | Draw
 
 module State = struct
@@ -102,25 +102,25 @@ type t =
 let update_state_with_settings f game = { game with state = f game }
 let update_state f game = { game with state = f game.state }
 
-let make_reader (id : player_id) game_ref () =
-  let player = State.get_player id !game_ref.state in
+let make_reader (meta : Player.meta) game_ref () =
+  let player = State.get_player meta !game_ref.state in
   let { Player_state.pos; heading; hp; view_direction; _ } = player.player_state in
   { Player.pos; heading; hp; view_direction }
 ;;
 
-let add_player player_directory player_file game_ref =
+let add_player (player_description : Player.description) game_ref =
   let game = !game_ref in
   let state = game.state in
-  let new_id = 1 + Players.cardinal state.players |> Player.Id.make in
-  let path = player_directory ^ "/" ^ player_file in
-  let impl = Player.Lua.load path (make_reader new_id game_ref) in
+  let path = Filename.concat player_description.directory "main.lua" in
+  let meta = player_description.meta in
+  let impl = Player.Lua.load path meta.name (make_reader meta game_ref) in
   game_ref
   := game
-     |> update_state (fun s -> { s with players = Players.add new_id impl state.players });
+     |> update_state (fun s -> { s with players = Players.add meta impl state.players });
   game_ref
 ;;
 
-let init (settings : Settings.t) player_files =
+let init (settings : Settings.t) players =
   let seed = settings.rng_seed in
   Random.init seed;
   Printf.printf
@@ -128,8 +128,8 @@ let init (settings : Settings.t) player_files =
     settings.rounds
     seed;
   List.fold_right
-    (add_player settings.player_directory)
-    player_files
+    add_player
+    players
     (ref
        { settings
        ; state =
@@ -251,7 +251,7 @@ let is_valid_position
   ~arena_width
   ~arena_height
   player_radius
-  (player_id : player_id)
+  (player : Player.meta)
   ({ x; y } as p : Point.t)
   (state : State.t)
   =
@@ -263,8 +263,8 @@ let is_valid_position
   in
   let would_hit_other_player =
     State.living_players state
-    |> Players.exists (fun id { player_state; _ } ->
-      player_id <> id && players_collide (2. *. player_radius) p player_state.pos)
+    |> Players.exists (fun other_player { player_state; _ } ->
+      player <> other_player && players_collide (2. *. player_radius) p player_state.pos)
   in
   stays_inside_arena && not would_hit_other_player
 ;;
@@ -294,14 +294,14 @@ let find_colliding_players player_diameter positions =
 
 type game_event =
   | Round_started of int
-  | Round_over of player_id option
+  | Round_over of Player.meta option
   | Tick of int
-  | Hit of attack_id * player_id * player_id * Point.t
+  | Hit of attack_id * Player.meta * Player.meta * Point.t
   | Attack_missed of attack_id
   | Attack_advanced of attack_id * Point.t
   | Attack_created of attack_id * attack_state
-  | Head_turned of player_id * float * float
-  | Player_moved of player_id * movement_change
+  | Head_turned of Player.meta * float * float
+  | Player_moved of Player.meta * movement_change
 
 let game_event_index = function
   | Round_started _ -> -2
@@ -580,13 +580,13 @@ let player_events_from_game_events player_id player game_events =
       | Round_over (Some id) when id = player_id -> Player_event.Round_won :: acc
       | Round_over mwinner ->
         (* TODO: name/id after meta rework *)
-        let name = Option.map Player.Id.show mwinner in
+        let name = Option.map (fun p -> Player.(p.name)) mwinner in
         Player_event.Round_over name :: acc
       | Tick tick -> Player_event.Tick tick :: acc
       | Hit (_id, owner, victim, pos) when player_id = owner ->
-        Player_event.Attack_hit (Player.Id.show victim, pos) :: acc
+        Player_event.Attack_hit (victim.name, pos) :: acc
       | Hit (_id, owner, victim, _pos) when player_id = victim ->
-        let acc = Player_event.Hit_by (Player.Id.show owner) :: acc in
+        let acc = Player_event.Hit_by owner.name :: acc in
         (* TODO: deduplicate *)
         if Player_state.is_dead player.player_state
         then Player_event.Death :: acc
@@ -603,11 +603,11 @@ let player_events_from_game_events player_id player game_events =
 let distribute_player_events game_events game =
   let { Settings.player_angle_of_vision; player_radius; _ } = game.settings in
   State.map_players
-    (fun id p ->
+    (fun meta p ->
       let visible_players =
         State.living_players game.state
-        |> Players.filter (fun other_id other_p ->
-          id <> other_id
+        |> Players.filter (fun other_meta other_p ->
+          meta <> other_meta
           && can_spot
                ~player_angle_of_vision
                ~player_radius
@@ -617,13 +617,13 @@ let distribute_player_events game_events game =
       in
       let enemy_seen_events =
         visible_players
-        |> Players.map (fun target ->
-          Player_event.Enemy_seen (target.impl.meta.name, target.player_state.pos))
+        |> Players.mapi (fun target_meta target ->
+          Player_event.Enemy_seen (target_meta.name, target.player_state.pos))
         |> Players.values
       in
       let player_events =
         game_events
-        |> player_events_from_game_events id p
+        |> player_events_from_game_events meta p
         |> List.append enemy_seen_events
       in
       read_player_commands p.impl player_events |> update_intent p)
@@ -663,8 +663,8 @@ let run game_ref =
     | Draw ->
       print_endline "-- DRAW --";
       Thread.delay 2.
-    | Won id ->
-      Printf.printf "-- WINNER: %s --\n%!" (Player.Id.show id);
+    | Won player ->
+      Printf.printf "-- WINNER: %s --\n%!" player.name;
       Thread.delay 2.
   in
   let rec go round =

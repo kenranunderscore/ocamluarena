@@ -1,6 +1,12 @@
 type meta =
   { name : string
   ; color : Color.t
+  ; version : string
+  }
+
+type description =
+  { directory : string
+  ; meta : meta
   }
 
 type movement_direction =
@@ -35,8 +41,7 @@ module Id : sig
 end
 
 type impl =
-  { meta : meta
-  ; on_round_started : int -> command list
+  { on_round_started : int -> command list
   ; on_tick : int -> command list
   ; on_enemy_seen : string -> Point.t -> command list
   ; on_attack_hit : string -> Point.t -> command list
@@ -47,5 +52,6 @@ type impl =
   }
 
 module Lua : sig
-  val load : string -> (unit -> player_info) -> impl
+  val load : string -> string -> (unit -> player_info) -> impl
+  val read_meta : string -> meta option
 end

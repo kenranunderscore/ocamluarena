@@ -101,7 +101,7 @@ type t =
   ; settings : Settings.t
   }
 
-let update_state_with_settings f game = { game with state = f game }
+let update_state_with_settings f game = { game with state = f game.settings game.state }
 let update_state f game = { game with state = f game.state }
 
 let make_reader (player : Player.t) game_ref () =
@@ -500,7 +500,7 @@ let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
   || (alpha_left <= left && alpha_right >= right)
 ;;
 
-let process_game_events events game =
+let process_game_events events _settings game_state =
   List.fold_left
     (fun (state : State.t) -> function
       | Game_event.Round_started _round -> state
@@ -550,7 +550,7 @@ let process_game_events events game =
             in
             { p with pos = move.position; heading = move.heading; intent })
           state)
-    game.state
+    game_state
     events
 ;;
 
@@ -603,12 +603,12 @@ let player_events_from_game_events player player_state game_events =
 
 (* TODO: vision events should probably be based on the state before any
    movement? *)
-let distribute_player_events game_events game =
-  let { Settings.player_angle_of_vision; player_radius; _ } = game.settings in
+let distribute_player_events game_events settings state =
+  let { Settings.player_angle_of_vision; player_radius; _ } = settings in
   State.map_players
     (fun meta p ->
       let visible_players =
-        State.living_players game.state
+        State.living_players state
         |> Players.filter (fun other_meta other_p ->
           meta <> other_meta
           && can_spot
@@ -631,7 +631,7 @@ let distribute_player_events game_events game =
         |> List.sort Player_event.compare
       in
       read_player_commands p.impl player_events |> update_intent p)
-    game.state
+    state
 ;;
 
 let step game =
@@ -642,19 +642,14 @@ let step game =
   |> update_state_with_settings (distribute_player_events game_events)
 ;;
 
-let init_round round game =
+let init_round round settings (state : State.t) =
   List.fold_right
     (fun (id, impl) s ->
-      let player_state = random_initial_player_state game.settings s in
+      let player_state = random_initial_player_state settings s in
       let data = { player_state; impl } in
       { s with all_players = Players.add id data s.all_players })
-    (game.state.players |> Players.bindings |> shuffle)
-    { game.state with
-      tick = 0
-    ; round
-    ; all_players = Players.empty
-    ; round_state = Ongoing
-    }
+    (state.players |> Players.bindings |> shuffle)
+    { state with tick = 0; round; all_players = Players.empty; round_state = Ongoing }
 ;;
 
 let run game_ref =

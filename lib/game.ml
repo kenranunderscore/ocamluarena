@@ -295,33 +295,32 @@ let find_colliding_players player_diameter positions =
   | None -> []
 ;;
 
-type game_event =
-  | Round_started of int
-  | Round_over of Player.t option
-  | Tick of int
-  | Hit of attack_id * Player.t * Player.t * Point.t
-  | Attack_missed of attack_id
-  | Attack_advanced of attack_id * Point.t
-  | Attack_created of attack_id * attack_state
-  | Head_turned of Player.t * float * float
-  | Player_moved of Player.t * movement_change
+module Game_event = struct
+  type t =
+    | Round_started of int
+    | Round_over of Player.t option
+    | Tick of int
+    | Hit of attack_id * Player.t * Player.t * Point.t
+    | Attack_missed of attack_id
+    | Attack_advanced of attack_id * Point.t
+    | Attack_created of attack_id * attack_state
+    | Head_turned of Player.t * float * float
+    | Player_moved of Player.t * movement_change
 
-let game_event_index = function
-  | Round_started _ -> -2
-  | Round_over _ -> -1
-  | Tick _ -> 0
-  | Hit _ -> 1
-  | Attack_missed _ -> 2
-  | Attack_advanced _ -> 3
-  | Attack_created _ -> 4
-  | Head_turned _ -> 5
-  | Player_moved _ -> 6
-;;
+  let index = function
+    | Round_started _ -> -2
+    | Round_over _ -> -1
+    | Tick _ -> 0
+    | Hit _ -> 1
+    | Attack_missed _ -> 2
+    | Attack_advanced _ -> 3
+    | Attack_created _ -> 4
+    | Head_turned _ -> 5
+    | Player_moved _ -> 6
+  ;;
 
-let sort_game_events events =
-  let comp e1 e2 = compare (game_event_index e1) (game_event_index e2) in
-  events |> List.sort comp
-;;
+  let compare e1 e2 = Int.compare (index e1) (index e2)
+end
 
 module Player_event = struct
   type t =
@@ -345,19 +344,14 @@ module Player_event = struct
     | Death -> 7
   ;;
 
-  let compare e1 e2 = compare (index e1) (index e2)
+  let compare e1 e2 = Int.compare (index e1) (index e2)
 end
-
-let sort_player_events events =
-  let comp = Player_event.compare in
-  events |> List.sort comp
-;;
 
 (* TODO: decide:
    - should this return vision events, or should these be decided AFTER movement?
    - or should this just be called after movement _and_ return vision events?
 *)
-let move_heads (settings : Settings.t) (state : State.t) =
+let turn_heads (settings : Settings.t) (state : State.t) =
   let players = State.living_players state in
   Players.fold
     (fun player data events ->
@@ -370,7 +364,7 @@ let move_heads (settings : Settings.t) (state : State.t) =
       let view_direction =
         Math.normalize_absolute_angle (data.player_state.view_direction +. dangle)
       in
-      Head_turned (player, view_direction, remaining_angle) :: events)
+      Game_event.Head_turned (player, view_direction, remaining_angle) :: events)
     players
     []
 ;;
@@ -408,7 +402,7 @@ let move_players
   |> Players.filter (fun player _ ->
     not @@ List.exists (fun (other_player, _) -> player = other_player) collisions)
   |> Players.bindings
-  |> List.map (fun (id, move) -> Player_moved (id, move))
+  |> List.map (fun (id, move) -> Game_event.Player_moved (id, move))
 ;;
 
 let players_hit player_radius owner pos players =
@@ -432,13 +426,13 @@ let transition_attacks
           players_hit player_radius attack.owner pos (State.living_players state)
         in
         if Players.is_empty hits
-        then Attack_advanced (id, pos) :: events
+        then Game_event.Attack_advanced (id, pos) :: events
         else
           Players.fold
-            (fun victim _p acc -> Hit (id, attack.owner, victim, pos) :: acc)
+            (fun victim _p acc -> Game_event.Hit (id, attack.owner, victim, pos) :: acc)
             hits
             events)
-      else Attack_missed id :: events)
+      else Game_event.Attack_missed id :: events)
     state.attacks
     []
 ;;
@@ -458,14 +452,14 @@ let create_attacks (state : State.t) =
         ; heading
         }
       in
-      Some (Attack_created (attack_id, attack))
+      Some (Game_event.Attack_created (attack_id, attack))
     | Some _ | None -> None)
   |> Players.values
 ;;
 
 let tick_events (state : State.t) =
-  let events = [ Tick state.tick ] in
-  if state.tick = 0 then Round_started state.round :: events else events
+  let events = [ Game_event.Tick state.tick ] in
+  if state.tick = 0 then Game_event.Round_started state.round :: events else events
 ;;
 
 let round_over (state : State.t) = Players.cardinal (State.living_players state) <= 1
@@ -474,7 +468,7 @@ let round_winner (state : State.t) = Players.choose_opt (State.living_players st
 let check_for_round_end = function
   | state when round_over state ->
     [ (match round_winner state with
-       | Some (id, _) -> Round_over (Some id)
+       | Some (id, _) -> Game_event.Round_over (Some id)
        | None -> Round_over None)
     ]
   | _ -> []
@@ -483,13 +477,13 @@ let check_for_round_end = function
 let determine_game_events (settings : Settings.t) (state : State.t) =
   List.concat
     [ tick_events state
-    ; move_heads settings state
+    ; turn_heads settings state
     ; move_players settings state
     ; transition_attacks settings state
     ; create_attacks state
     ; check_for_round_end state
     ]
-  |> sort_game_events
+  |> List.sort Game_event.compare
 ;;
 
 let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
@@ -509,7 +503,7 @@ let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
 let process_game_events events game =
   List.fold_left
     (fun (state : State.t) -> function
-      | Round_started _round -> state
+      | Game_event.Round_started _round -> state
       | Round_over (Some id) -> { state with round_state = Won id }
       | Round_over None -> { state with round_state = Draw }
       | Tick tick ->
@@ -590,7 +584,7 @@ let update_intent player_data commands =
 let player_events_from_game_events player player_state game_events =
   List.fold_left
     (fun acc -> function
-      | Round_started round -> Player_event.Round_started round :: acc
+      | Game_event.Round_started round -> Player_event.Round_started round :: acc
       | Round_over (Some id) when id = player -> Player_event.Round_won :: acc
       | Round_over mwinner -> Player_event.Round_over mwinner :: acc
       | Tick tick -> Player_event.Tick tick :: acc
@@ -634,6 +628,7 @@ let distribute_player_events game_events game =
         game_events
         |> player_events_from_game_events meta p.player_state
         |> List.append enemy_seen_events
+        |> List.sort Player_event.compare
       in
       read_player_commands p.impl player_events |> update_intent p)
     game.state

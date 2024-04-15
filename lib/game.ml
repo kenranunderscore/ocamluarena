@@ -295,7 +295,7 @@ let find_colliding_players player_diameter positions =
   | None -> []
 ;;
 
-module Game_event = struct
+module Event = struct
   type t =
     | Round_started of int
     | Round_over of Player.t option
@@ -347,24 +347,34 @@ module Player_event = struct
   let compare e1 e2 = Int.compare (index e1) (index e2)
 end
 
+let turn_head player ~max_view_turn_rate ~view_direction ~angle =
+  if angle <> 0.
+  then (
+    let abs_angle = Float.abs angle in
+    let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
+    let new_view_direction = view_direction +. dangle in
+    let view_direction = Math.normalize_absolute_angle new_view_direction in
+    let remaining_angle =
+      if abs_angle < max_view_turn_rate then 0. else angle -. dangle
+    in
+    let event = Event.Head_turned (player, view_direction, remaining_angle) in
+    Some event)
+  else None
+;;
+
 (* TODO: decide:
    - should this return vision events, or should these be decided AFTER movement?
    - or should this just be called after movement _and_ return vision events?
 *)
-let turn_heads (settings : Settings.t) (state : State.t) =
+let turn_heads max_view_turn_rate (state : State.t) =
   let players = State.living_players state in
   Players.fold
     (fun player data events ->
-      let angle = data.player_state.intent.view_angle in
-      let abs_angle = Float.abs angle in
-      let dangle = Math.sign angle *. Float.min settings.max_view_turn_rate abs_angle in
-      let remaining_angle =
-        if abs_angle < settings.max_view_turn_rate then 0. else angle -. dangle
-      in
-      let view_direction =
-        Math.normalize_absolute_angle (data.player_state.view_direction +. dangle)
-      in
-      Game_event.Head_turned (player, view_direction, remaining_angle) :: events)
+      let { Player_state.view_direction; intent; _ } = data.player_state in
+      List.append
+        (turn_head player ~max_view_turn_rate ~view_direction ~angle:intent.view_angle
+         |> Option.to_list)
+        events)
     players
     []
 ;;
@@ -402,7 +412,7 @@ let move_players
   |> Players.filter (fun player _ ->
     not @@ List.exists (fun (other_player, _) -> player = other_player) collisions)
   |> Players.bindings
-  |> List.map (fun (id, move) -> Game_event.Player_moved (id, move))
+  |> List.map (fun (id, move) -> Event.Player_moved (id, move))
 ;;
 
 let players_hit player_radius owner pos players =
@@ -426,13 +436,13 @@ let transition_attacks
           players_hit player_radius attack.owner pos (State.living_players state)
         in
         if Players.is_empty hits
-        then Game_event.Attack_advanced (id, pos) :: events
+        then Event.Attack_advanced (id, pos) :: events
         else
           Players.fold
-            (fun victim _p acc -> Game_event.Hit (id, attack.owner, victim, pos) :: acc)
+            (fun victim _p acc -> Event.Hit (id, attack.owner, victim, pos) :: acc)
             hits
             events)
-      else Game_event.Attack_missed id :: events)
+      else Event.Attack_missed id :: events)
     state.attacks
     []
 ;;
@@ -452,14 +462,14 @@ let create_attacks (state : State.t) =
         ; heading
         }
       in
-      Some (Game_event.Attack_created (attack_id, attack))
+      Some (Event.Attack_created (attack_id, attack))
     | Some _ | None -> None)
   |> Players.values
 ;;
 
 let tick_events (state : State.t) =
-  let events = [ Game_event.Tick state.tick ] in
-  if state.tick = 0 then Game_event.Round_started state.round :: events else events
+  let events = [ Event.Tick state.tick ] in
+  if state.tick = 0 then Event.Round_started state.round :: events else events
 ;;
 
 let round_over (state : State.t) = Players.cardinal (State.living_players state) <= 1
@@ -468,7 +478,7 @@ let round_winner (state : State.t) = Players.choose_opt (State.living_players st
 let check_for_round_end = function
   | state when round_over state ->
     [ (match round_winner state with
-       | Some (id, _) -> Game_event.Round_over (Some id)
+       | Some (id, _) -> Event.Round_over (Some id)
        | None -> Round_over None)
     ]
   | _ -> []
@@ -477,13 +487,13 @@ let check_for_round_end = function
 let determine_game_events (settings : Settings.t) (state : State.t) =
   List.concat
     [ tick_events state
-    ; turn_heads settings state
+    ; turn_heads settings.max_view_turn_rate state
     ; move_players settings state
     ; transition_attacks settings state
     ; create_attacks state
     ; check_for_round_end state
     ]
-  |> List.sort Game_event.compare
+  |> List.sort Event.compare
 ;;
 
 let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
@@ -503,7 +513,7 @@ let can_spot ~player_angle_of_vision ~player_radius p view_direction q =
 let process_game_events events _settings game_state =
   List.fold_left
     (fun (state : State.t) -> function
-      | Game_event.Round_started _round -> state
+      | Event.Round_started _round -> state
       | Round_over (Some id) -> { state with round_state = Won id }
       | Round_over None -> { state with round_state = Draw }
       | Tick tick ->
@@ -584,7 +594,7 @@ let update_intent player_data commands =
 let player_events_from_game_events player player_state game_events =
   List.fold_left
     (fun acc -> function
-      | Game_event.Round_started round -> Player_event.Round_started round :: acc
+      | Event.Round_started round -> Player_event.Round_started round :: acc
       | Round_over (Some id) when id = player -> Player_event.Round_won :: acc
       | Round_over mwinner -> Player_event.Round_over mwinner :: acc
       | Tick tick -> Player_event.Tick tick :: acc

@@ -115,7 +115,7 @@ let make_reader (player : Player.t) game_ref () =
 let add_player ((player : Player.t), directory) game_ref =
   let game = !game_ref in
   let state = game.state in
-  let path = Filename.concat directory "main.lua" in
+  let path = Filename.concat directory player.entrypoint in
   let impl =
     Player.Lua.load_implementation path player.name (make_reader player game_ref)
   in

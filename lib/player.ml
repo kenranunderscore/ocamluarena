@@ -4,6 +4,7 @@ type t =
   { name : string
   ; color : Color.t
   ; version : string
+  ; entrypoint : string
   }
 
 let compare p1 p2 = String.compare p1.name p2.name
@@ -402,9 +403,11 @@ module Lua = struct
         | Some version -> version
         | None -> failwith "FIXME: version failure"
       in
+      Lua.getglobal ls "entrypoint";
+      let entrypoint = Option.value (Lua.tostring ls (-1)) ~default:"main.lua" in
       (* TODO: default color *)
       let color = lua_get_color ls in
-      Some { name; color; version })
+      Some { name; color; version; entrypoint })
     else None
   ;;
 end

@@ -2,7 +2,11 @@ open Alcotest
 open Arena
 
 let dummy : Player.t =
-  { name = "dummy"; color = Color.make ~red:0 ~green:0 ~blue:0; version = "1" }
+  { name = "dummy"
+  ; color = Color.make ~red:0 ~green:0 ~blue:0
+  ; version = "1"
+  ; entrypoint = "main.lua"
+  }
 ;;
 
 let test_can_spot_1st_quadrant_too_far_left () =

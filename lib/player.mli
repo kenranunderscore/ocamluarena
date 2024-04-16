@@ -2,6 +2,7 @@ type t =
   { name : string
   ; color : Color.t
   ; version : string
+  ; entrypoint : string
   }
 
 val compare : t -> t -> int

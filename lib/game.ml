@@ -355,9 +355,8 @@ let turn_head player ~max_view_turn_rate ~view_direction ~angle =
       Math.clamp (view_direction +. dangle) (-.Math.half_pi) Math.half_pi
     in
     let remaining_angle =
-      if new_view_direction = Math.half_pi || new_view_direction = -.Math.half_pi
-      then 0.
-      else view_direction +. angle -. new_view_direction
+      Math.clamp (view_direction +. angle) (-.Math.half_pi) Math.half_pi
+      -. new_view_direction
     in
     let event = Event.Head_turned (player, new_view_direction, remaining_angle) in
     Some event)

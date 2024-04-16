@@ -6,9 +6,9 @@ end
 
 function m.on_tick(n)
   if n % 20 == 0 then
-    return { me.move_left(1), me.turn_right(0.05), me.look_right(0.03) }
+    return { me.move_left(1), me.turn_right(0.05), me.turn_head_right(0.03) }
   else
-    return { me.move_backward(1), me.turn_right(0.05), me.look_right(0.03) }
+    return { me.move_backward(1), me.turn_right(0.05), me.turn_head_right(0.03) }
   end
 end
 

@@ -31,9 +31,7 @@ let discover_players dir =
   |> List.filter Sys.is_directory
   |> List.filter_map (fun d ->
     match Player.Lua.read_meta d with
-    | Some meta ->
-      print_endline meta.version;
-      Some (meta, d)
+    | Some meta -> Some (meta, d)
     | None ->
       print_endline "NOPE";
       None)

@@ -106,8 +106,10 @@ let update_state f game = { game with state = f game.state }
 
 let make_reader (player : Player.t) game_ref () =
   let player = State.get_player player !game_ref.state in
-  let { Player_state.pos; heading; hp; view_direction; _ } = player.player_state in
-  { Player.pos; heading; hp; view_direction }
+  let { Player_state.pos; heading; hp; view_direction; attack_direction; _ } =
+    player.player_state
+  in
+  { Player.pos; heading; hp; view_direction; attack_direction }
 ;;
 
 let add_player ((player : Player.t), directory) game_ref =
@@ -165,6 +167,7 @@ let random_initial_player_state (settings : Settings.t) (state : State.t) =
   { Player_state.pos
   ; heading
   ; view_direction = 0.
+  ; attack_direction = 0.
   ; hp = 100
   ; intent = Intent.default
   ; attack_cooldown = 0
@@ -185,7 +188,7 @@ let reduce_commands commands =
     | h :: t ->
       h
       :: (reduce
-          @@ List.filter (fun x -> Player.command_index x <> Player.command_index h) t)
+          @@ List.filter (fun x -> Player.Command.index x <> Player.Command.index h) t)
   in
   reduce (List.rev commands)
 ;;
@@ -239,11 +242,12 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading (intent : Intent.
 
 let determine_intent old_intent cmds =
   let apply_cmd intent = function
-    | Player.Move (direction, distance) ->
+    | Player.Command.Move (direction, distance) ->
       Intent.set_movement intent { Intent.Movement.distance; direction }
-    | Turn_right turn_angle -> { intent with Intent.turn_angle }
-    | Attack heading -> { intent with attack = Some heading }
-    | Look_right view_angle -> { intent with view_angle }
+    | Attack -> { intent with attack = true }
+    | Turn turn_angle -> { intent with Intent.turn_angle }
+    | Turn_head view_angle -> { intent with view_angle }
+    | Turn_arms attack_angle -> { intent with attack_angle }
   in
   List.fold_left apply_cmd old_intent cmds
 ;;
@@ -304,6 +308,7 @@ module Event = struct
     | Attack_advanced of attack_id * Point.t
     | Attack_created of attack_id * attack_state
     | Head_turned of Player.t * float * float
+    | Arms_turned of Player.t * float * float
     | Player_moved of Player.t * movement_change
 
   let index = function
@@ -315,7 +320,8 @@ module Event = struct
     | Attack_advanced _ -> 3
     | Attack_created _ -> 4
     | Head_turned _ -> 5
-    | Player_moved _ -> 6
+    | Arms_turned _ -> 6
+    | Player_moved _ -> 7
   ;;
 
   let compare e1 e2 = Int.compare (index e1) (index e2)
@@ -346,35 +352,64 @@ module Player_event = struct
   let compare e1 e2 = Int.compare (index e1) (index e2)
 end
 
-let turn_head player ~max_view_turn_rate ~view_direction ~angle =
+let turn_body_part ~max_turn_rate ~current_direction ~angle =
   let abs_angle = Float.abs angle in
-  let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
-  let new_view_direction =
-    Math.clamp (view_direction +. dangle) (-.Math.half_pi) Math.half_pi
+  let delta = Math.sign angle *. Float.min max_turn_rate abs_angle in
+  let new_direction =
+    Math.clamp (current_direction +. delta) (-.Math.half_pi) Math.half_pi
   in
-  if new_view_direction = view_direction
+  if new_direction = current_direction
   then None
   else (
-    Printf.printf "new: %f\n%!" new_view_direction;
-    Printf.printf "old: %f\n%!" view_direction;
     let remaining_angle =
-      Math.clamp (view_direction +. angle) (-.Math.half_pi) Math.half_pi
-      -. new_view_direction
+      Math.clamp (current_direction +. angle) (-.Math.half_pi) Math.half_pi
+      -. new_direction
     in
-    Some (Event.Head_turned (player, new_view_direction, remaining_angle)))
+    Some (new_direction, remaining_angle))
 ;;
 
-(* TODO: decide:
-   - should this return vision events, or should these be decided AFTER movement?
-   - or should this just be called after movement _and_ return vision events?
-*)
-let turn_heads max_view_turn_rate (state : State.t) =
+let turn_head player ~max_view_turn_rate ~view_direction ~angle =
+  turn_body_part
+    ~max_turn_rate:max_view_turn_rate
+    ~current_direction:view_direction
+    ~angle
+  |> Option.map (fun (direction, remaining) ->
+    Event.Head_turned (player, direction, remaining))
+;;
+
+let turn_single_pair_of_arms player ~max_attack_turn_rate ~attack_direction ~angle =
+  turn_body_part
+    ~max_turn_rate:max_attack_turn_rate
+    ~current_direction:attack_direction
+    ~angle
+  |> Option.map (fun (direction, remaining) ->
+    Event.Arms_turned (player, direction, remaining))
+;;
+
+let turn_heads ~max_view_turn_rate (state : State.t) =
   let players = State.living_players state in
   Players.fold
     (fun player data events ->
       let { Player_state.view_direction; intent; _ } = data.player_state in
       List.append
         (turn_head player ~max_view_turn_rate ~view_direction ~angle:intent.view_angle
+         |> Option.to_list)
+        events)
+    players
+    []
+;;
+
+let turn_arms ~max_attack_turn_rate (state : State.t) =
+  let players = State.living_players state in
+  Players.fold
+    (fun player data events ->
+      let { Player_state.attack_direction; intent; _ } = data.player_state in
+      List.append
+        (turn_single_pair_of_arms
+           player
+           ~max_attack_turn_rate
+           ~attack_direction
+           ~angle:intent.attack_angle
          |> Option.to_list)
         events)
     players
@@ -454,18 +489,18 @@ let create_attacks (state : State.t) =
   state
   |> State.living_players
   |> Players.filter_map (fun player data ->
-    match data.player_state.intent.attack with
-    | Some heading when data.player_state.attack_cooldown = 0 ->
+    if data.player_state.intent.attack && data.player_state.attack_cooldown = 0
+    then (
       let attack_id = 1 + Int_map.fold (fun id _ acc -> max acc id) state.attacks 0 in
       let attack =
         { origin = data.player_state.pos
         ; owner = player
         ; pos = data.player_state.pos
-        ; heading
+        ; heading = Player_state.resulting_attack_direction data.player_state
         }
       in
-      Some (Event.Attack_created (attack_id, attack))
-    | Some _ | None -> None)
+      Some (Event.Attack_created (attack_id, attack)))
+    else None)
   |> Players.values
 ;;
 
@@ -486,10 +521,14 @@ let check_for_round_end = function
   | _ -> []
 ;;
 
-let determine_game_events (settings : Settings.t) (state : State.t) =
+let determine_game_events
+  ({ Settings.max_view_turn_rate; max_attack_turn_rate; _ } as settings)
+  (state : State.t)
+  =
   List.concat
     [ tick_events state
-    ; turn_heads settings.max_view_turn_rate state
+    ; turn_heads ~max_view_turn_rate state
+    ; turn_arms ~max_attack_turn_rate state
     ; move_players settings state
     ; transition_attacks settings state
     ; create_attacks state
@@ -541,7 +580,7 @@ let process_game_events events _settings game_state =
         state
         |> State.add_attack id attack
         |> State.update_player attack.owner (fun p ->
-          let intent = { p.intent with attack = None } in
+          let intent = { p.intent with attack = false } in
           { p with intent; attack_cooldown })
       | Head_turned (id, view_direction, view_angle) ->
         State.update_player
@@ -549,6 +588,13 @@ let process_game_events events _settings game_state =
           (fun p ->
             let intent = { p.intent with view_angle } in
             { p with view_direction; intent })
+          state
+      | Arms_turned (id, attack_direction, attack_angle) ->
+        State.update_player
+          id
+          (fun p ->
+            let intent = { p.intent with attack_angle } in
+            { p with attack_direction; intent })
           state
       | Player_moved (id, move) ->
         State.update_player
@@ -608,7 +654,7 @@ let player_events_from_game_events player player_state game_events =
         if Player_state.is_dead player_state then Player_event.Death :: acc else acc
       | Hit _ -> acc
       | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
-      | Head_turned _ | Player_moved _ -> acc)
+      | Head_turned _ | Arms_turned _ | Player_moved _ -> acc)
     []
     game_events
 ;;

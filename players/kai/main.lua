@@ -2,7 +2,7 @@ local m = {}
 
 function m.on_tick(n)
   if n % 10 == 0 then
-    return { me.move_forward(5), me.look_left(0.05), me.attack(n / 50) }
+    return { me.move_forward(5), me.turn_head_left(0.05), me.attack() }
   end
 end
 

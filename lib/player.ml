@@ -22,19 +22,25 @@ let string_of_direction = function
   | Right -> "right"
 ;;
 
-type command =
-  | Move of movement_direction * float
-  | Turn_right of float
-  | Attack of float
-  | Look_right of float
-[@@deriving show]
+module Command = struct
+  type t =
+    | Move of movement_direction * float
+    | Attack
+    | Turn of float
+    | Turn_head of float
+    | Turn_arms of float
+  [@@deriving show]
 
-let command_index = function
-  | Move _ -> 0
-  | Turn_right _ -> 1
-  | Attack _ -> 2
-  | Look_right _ -> 3
-;;
+  let index = function
+    | Move _ -> 0
+    | Attack -> 1
+    | Turn _ -> 2
+    | Turn_head _ -> 3
+    | Turn_arms _ -> 4
+  ;;
+
+  let compare cmd1 cmd2 = Int.compare (index cmd1) (index cmd2)
+end
 
 module Id = struct
   type t = int
@@ -46,21 +52,22 @@ end
 
 (* TODO: replace strings with t's *)
 type impl =
-  { on_round_started : int -> command list
-  ; on_tick : int -> command list
-  ; on_enemy_seen : string -> Point.t -> command list
-  ; on_attack_hit : string -> Point.t -> command list
-  ; on_hit_by : string -> command list
+  { on_round_started : int -> Command.t list
+  ; on_tick : int -> Command.t list
+  ; on_enemy_seen : string -> Point.t -> Command.t list
+  ; on_attack_hit : string -> Point.t -> Command.t list
+  ; on_hit_by : string -> Command.t list
   ; on_death : unit -> unit
   ; on_round_over : string option -> unit
   ; on_round_won : unit -> unit
   }
 
-type player_info =
+type info =
   { hp : int
   ; pos : Point.t
   ; heading : float
   ; view_direction : float
+  ; attack_direction : float
   }
 
 module Lua = struct
@@ -100,25 +107,28 @@ module Lua = struct
                 Lua.getfield ls (-1) "distance";
                 let distance = Lua.tonumber ls (-1) in
                 Lua.pop ls 1;
-                Move (direction, distance)
+                Command.Move (direction, distance)
               | Some "attack" ->
                 Lua.pop ls 1;
-                Lua.getfield ls (-1) "heading";
-                let heading = Lua.tonumber ls (-1) in
-                Lua.pop ls 1;
-                Attack heading
+                Attack
               | Some "turn_right" ->
                 Lua.pop ls 1;
                 Lua.getfield ls (-1) "angle";
                 let angle = Lua.tonumber ls (-1) in
                 Lua.pop ls 1;
-                Turn_right angle
-              | Some "look_right" ->
+                Turn angle
+              | Some "turn_head_right" ->
                 Lua.pop ls 1;
                 Lua.getfield ls (-1) "angle";
                 let angle = Lua.tonumber ls (-1) in
                 Lua.pop ls 1;
-                Look_right angle
+                Turn_head angle
+              | Some "turn_arms_right" ->
+                Lua.pop ls 1;
+                Lua.getfield ls (-1) "angle";
+                let angle = Lua.tonumber ls (-1) in
+                Lua.pop ls 1;
+                Turn_arms angle
               | Some s -> failwithf "unknown tag: %s" s
               | None -> failwith "no tag found"
             in
@@ -287,6 +297,11 @@ module Lua = struct
       1
     ;;
 
+    let attack_direction get_player_info ls =
+      Lua.pushnumber ls (get_player_info ()).attack_direction;
+      1
+    ;;
+
     let hp get_player_info ls =
       Lua.pushinteger ls (get_player_info ()).hp;
       1
@@ -310,51 +325,17 @@ module Lua = struct
     ;;
 
     let attack ls =
-      let heading = Lua.tonumber ls (-1) in
-      Lua.pop ls 1;
       Lua.newtable ls;
       push_tag ls "attack";
-      Lua.pushnumber ls heading;
-      Lua.setfield ls (-2) "heading";
       1
     ;;
 
-    let turn_right ls =
+    let turn_body_part left tag ls =
       let angle = Lua.tonumber ls (-1) in
       Lua.pop ls 1;
       Lua.newtable ls;
-      push_tag ls "turn_right";
-      Lua.pushnumber ls angle;
-      Lua.setfield ls (-2) "angle";
-      1
-    ;;
-
-    let turn_left ls =
-      let angle = Lua.tonumber ls (-1) in
-      Lua.pop ls 1;
-      Lua.newtable ls;
-      push_tag ls "turn_right";
-      Lua.pushnumber ls (-.angle);
-      Lua.setfield ls (-2) "angle";
-      1
-    ;;
-
-    let look_right ls =
-      let angle = Lua.tonumber ls (-1) in
-      Lua.pop ls 1;
-      Lua.newtable ls;
-      push_tag ls "look_right";
-      Lua.pushnumber ls angle;
-      Lua.setfield ls (-2) "angle";
-      1
-    ;;
-
-    let look_left ls =
-      let angle = Lua.tonumber ls (-1) in
-      Lua.pop ls 1;
-      Lua.newtable ls;
-      push_tag ls "look_right";
-      Lua.pushnumber ls (-.angle);
+      push_tag ls tag;
+      Lua.pushnumber ls (if left then -.angle else angle);
       Lua.setfield ls (-2) "angle";
       1
     ;;
@@ -377,16 +358,23 @@ module Lua = struct
       ; "position", Api.position get_player_info
       ; "heading", Api.heading get_player_info
       ; "view_direction", Api.view_direction get_player_info
+      ; "attack_direction", Api.attack_direction get_player_info
       ; "hp", Api.hp get_player_info
+      ; "move", Api.move Forward
       ; "move_forward", Api.move Forward
       ; "move_backward", Api.move Backward
       ; "move_left", Api.move Left
       ; "move_right", Api.move Right
       ; "attack", Api.attack
-      ; "turn_right", Api.turn_right
-      ; "turn_left", Api.turn_left
-      ; "look_right", Api.look_right
-      ; "look_left", Api.look_left
+      ; "turn", Api.turn_body_part false "turn_right"
+      ; "turn_right", Api.turn_body_part false "turn_right"
+      ; "turn_left", Api.turn_body_part true "turn_right"
+      ; "turn_head", Api.turn_body_part false "turn_head_right"
+      ; "turn_head_right", Api.turn_body_part false "turn_head_right"
+      ; "turn_head_left", Api.turn_body_part true "turn_head_right"
+      ; "turn_arms", Api.turn_body_part false "turn_arms_right"
+      ; "turn_arms_right", Api.turn_body_part false "turn_arms_right"
+      ; "turn_arms_left", Api.turn_body_part true "turn_arms_right"
       ; "log", Api.log name
       ]
   ;;
@@ -414,7 +402,6 @@ module Lua = struct
         | Some version -> version
         | None -> failwith "FIXME: version failure"
       in
-      print_endline "done file";
       (* TODO: default color *)
       let color = lua_get_color ls in
       Some { name; color; version })

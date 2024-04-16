@@ -125,7 +125,16 @@ let test_turn_head_left_remaining_angle_is_shortened () =
 ;;
 
 let test_turn_head_noop () =
-  let result = Game.turn_head dummy ~max_view_turn_rate:1. ~view_direction:2. ~angle:0. in
+  let result =
+    Game.turn_head dummy ~max_view_turn_rate:1. ~view_direction:(-1.1) ~angle:0.
+  in
+  check bool "head turned unexpectedly" true (Option.is_none result)
+;;
+
+let test_turn_head_noop_if_already_at_right_limit () =
+  let result =
+    Game.turn_head dummy ~max_view_turn_rate:1. ~view_direction:Math.half_pi ~angle:0.1
+  in
   check bool "head turned unexpectedly" true (Option.is_none result)
 ;;
 
@@ -135,6 +144,10 @@ let tests =
   ; test_case "can spot" `Quick test_can_spot_1st_quadrant_head_on
   ; test_case "can spot" `Quick test_can_spot_1st_quadrant_behind
   ; test_case "not turning the head" `Quick test_turn_head_noop
+  ; test_case
+      "trying to turn at limit"
+      `Quick
+      test_turn_head_noop_if_already_at_right_limit
   ; test_case "turning head to the right, cap not hit" `Quick test_turn_head_right_no_cap
   ; test_case "turning head to the right, cap hit" `Quick test_turn_head_right_with_cap
   ; test_case

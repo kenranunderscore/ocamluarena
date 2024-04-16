@@ -347,20 +347,21 @@ module Player_event = struct
 end
 
 let turn_head player ~max_view_turn_rate ~view_direction ~angle =
-  if angle <> 0.
-  then (
-    let abs_angle = Float.abs angle in
-    let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
-    let new_view_direction =
-      Math.clamp (view_direction +. dangle) (-.Math.half_pi) Math.half_pi
-    in
+  let abs_angle = Float.abs angle in
+  let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
+  let new_view_direction =
+    Math.clamp (view_direction +. dangle) (-.Math.half_pi) Math.half_pi
+  in
+  if new_view_direction = view_direction
+  then None
+  else (
+    Printf.printf "new: %f\n%!" new_view_direction;
+    Printf.printf "old: %f\n%!" view_direction;
     let remaining_angle =
       Math.clamp (view_direction +. angle) (-.Math.half_pi) Math.half_pi
       -. new_view_direction
     in
-    let event = Event.Head_turned (player, new_view_direction, remaining_angle) in
-    Some event)
-  else None
+    Some (Event.Head_turned (player, new_view_direction, remaining_angle)))
 ;;
 
 (* TODO: decide:

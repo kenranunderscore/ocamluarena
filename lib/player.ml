@@ -158,6 +158,9 @@ module Lua = struct
   ;;
 
   let lua_round_started ls round =
+    (* NOTE: this should alert early if any functions are unexpectedly
+       unbalanced *)
+    Lua.assert_stack_size ls 1;
     Lua.getfield ls 1 "on_round_started";
     if Lua.isnil ls (-1)
     then (

@@ -20,3 +20,8 @@ let call ls nargs nreturns =
   assert (nreturns >= 0);
   Lua_api.Lua.call ls nargs nreturns
 ;;
+
+let assert_stack_size ls expected_size =
+  let size = Lua_api.Lua.gettop ls in
+  assert (size = expected_size)
+;;

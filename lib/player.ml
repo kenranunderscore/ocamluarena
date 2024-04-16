@@ -249,14 +249,16 @@ module Lua = struct
 
   let lua_get_color ls =
     Lua.getglobal ls "color";
-    Lua.getfield ls (-1) "red";
-    let red = Lua.tointeger ls (-1) in
-    Lua.getfield ls (-2) "green";
-    let green = Lua.tointeger ls (-1) in
-    Lua.getfield ls (-3) "blue";
-    let blue = Lua.tointeger ls (-1) in
-    Lua.pop ls 4;
-    Color.make ~red ~green ~blue
+    if Lua.istable ls (-1)
+    then (
+      Lua.getfield ls (-1) "red";
+      let red = Lua.tointeger ls (-1) in
+      Lua.getfield ls (-2) "green";
+      let green = Lua.tointeger ls (-1) in
+      Lua.getfield ls (-3) "blue";
+      let blue = Lua.tointeger ls (-1) in
+      Color.make ~red ~green ~blue |> Option.some)
+    else None
   ;;
 
   let lua_load_player_from_file path =
@@ -394,23 +396,19 @@ module Lua = struct
     if Lua.dofile ls (Filename.concat dir "meta.lua")
     then (
       Lua.getglobal ls "name";
-      let name =
-        match Lua.tostring ls (-1) with
-        | Some name -> name
-        | None -> failwith "FIXME: fail gracefully"
-      in
-      Lua.pop ls 1;
-      Lua.getglobal ls "version";
-      let version =
-        match Lua.tostring ls (-1) with
-        | Some version -> version
-        | None -> failwith "FIXME: version failure"
-      in
-      Lua.getglobal ls "entrypoint";
-      let entrypoint = Option.value (Lua.tostring ls (-1)) ~default:"main.lua" in
-      (* TODO: default color *)
-      let color = lua_get_color ls in
-      Some { name; color; version; entrypoint })
-    else None
+      match Lua.tostring ls (-1) with
+      | None ->
+        Printf.printf "WARNING - Missing player name in %s\n%!" dir;
+        None
+      | Some name ->
+        Lua.getglobal ls "version";
+        let version = Option.value (Lua.tostring ls (-1)) ~default:"1.0" in
+        Lua.getglobal ls "entrypoint";
+        let entrypoint = Option.value (Lua.tostring ls (-1)) ~default:"main.lua" in
+        let color = Option.value (lua_get_color ls) ~default:(Color.random ()) in
+        Some { name; color; version; entrypoint })
+    else (
+      Printf.printf "WARNING - Missing meta.lua in %s/\n%!" dir;
+      None)
   ;;
 end

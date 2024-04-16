@@ -162,10 +162,9 @@ let random_initial_player_state (settings : Settings.t) (state : State.t) =
   in
   let pos = first_with random_pos is_valid in
   let heading = Random.float Math.two_pi in
-  let view_direction = Random.float Math.two_pi in
   { Player_state.pos
   ; heading
-  ; view_direction
+  ; view_direction = 0.
   ; hp = 100
   ; intent = Intent.default
   ; attack_cooldown = 0
@@ -352,12 +351,15 @@ let turn_head player ~max_view_turn_rate ~view_direction ~angle =
   then (
     let abs_angle = Float.abs angle in
     let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
-    let new_view_direction = view_direction +. dangle in
-    let view_direction = Math.normalize_absolute_angle new_view_direction in
-    let remaining_angle =
-      if abs_angle < max_view_turn_rate then 0. else angle -. dangle
+    let new_view_direction =
+      view_direction +. dangle |> Float.max (-.Math.half_pi) |> Float.min Math.half_pi
     in
-    let event = Event.Head_turned (player, view_direction, remaining_angle) in
+    let remaining_angle =
+      if new_view_direction = Math.half_pi || new_view_direction = -.Math.half_pi
+      then 0.
+      else view_direction +. angle -. new_view_direction
+    in
+    let event = Event.Head_turned (player, new_view_direction, remaining_angle) in
     Some event)
   else None
 ;;
@@ -625,7 +627,7 @@ let distribute_player_events game_events settings state =
                ~player_angle_of_vision
                ~player_radius
                p.player_state.pos
-               p.player_state.view_direction
+               (Player_state.resulting_view_direction p.player_state)
                other_p.player_state.pos)
       in
       let enemy_seen_events =

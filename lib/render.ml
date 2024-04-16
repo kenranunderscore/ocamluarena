@@ -15,7 +15,7 @@ let heading renderer (settings : Settings.t) (p : Point.t) h =
   Sdl.draw_line_in_direction renderer p (h -. Math.half_pi) radius
 ;;
 
-let view_angle renderer (settings : Settings.t) (p : Point.t) angle =
+let view_direction renderer (settings : Settings.t) (p : Point.t) angle =
   (* TODO: bind SDL_RenderGeometry and use that to fill the area *)
   let left_angle = angle -. (settings.player_angle_of_vision /. 2.) in
   let right_angle = angle +. (settings.player_angle_of_vision /. 2.) in
@@ -36,7 +36,11 @@ let player
   Sdl.set_render_draw_color renderer ~red ~green ~blue;
   Sdl.draw_circle renderer p settings.player_radius;
   heading renderer settings player_state.pos player_state.heading;
-  view_angle renderer settings player_state.pos player_state.view_direction
+  view_direction
+    renderer
+    settings
+    player_state.pos
+    (Player_state.resulting_view_direction player_state)
 ;;
 
 let players renderer (game : Game.t) =

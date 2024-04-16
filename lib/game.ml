@@ -352,7 +352,7 @@ let turn_head player ~max_view_turn_rate ~view_direction ~angle =
     let abs_angle = Float.abs angle in
     let dangle = Math.sign angle *. Float.min max_view_turn_rate abs_angle in
     let new_view_direction =
-      view_direction +. dangle |> Float.max (-.Math.half_pi) |> Float.min Math.half_pi
+      Math.clamp (view_direction +. dangle) (-.Math.half_pi) Math.half_pi
     in
     let remaining_angle =
       if new_view_direction = Math.half_pi || new_view_direction = -.Math.half_pi

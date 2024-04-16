@@ -26,3 +26,5 @@ let normalize_relative_angle = function
     let abs = normalize_absolute_angle angle in
     if abs >= Float.pi then abs -. two_pi else abs
 ;;
+
+let clamp x left right = Float.min (Float.max left x) right

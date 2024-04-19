@@ -208,7 +208,6 @@ type movement_change =
   ; heading : heading
   }
 
-(* TODO: pull out common movement logic *)
 let calculate_new_pos (p : Point.t) heading velocity =
   let dx = sin heading *. velocity in
   let dy = -.(cos heading *. velocity) in
@@ -411,7 +410,6 @@ let turn_arms ~max_attack_turn_rate (state : State.t) =
     []
 ;;
 
-(* TODO: move attacks or players first? *)
 let move_players
   ({ arena_width; arena_height; max_turn_rate; player_radius; _ } : Settings.t)
   (state : State.t)

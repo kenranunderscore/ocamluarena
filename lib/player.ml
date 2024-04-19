@@ -67,8 +67,11 @@ type info =
   { hp : int
   ; pos : Point.t
   ; heading : float
-  ; view_direction : float
-  ; attack_direction : float
+  ; head_direction : float
+  ; arms_direction : float
+  ; turn_remaining : float
+  ; head_turn_remaining : float
+  ; arms_turn_remaining : float
   }
 
 module Lua = struct
@@ -273,18 +276,18 @@ module Lua = struct
   ;;
 
   module Api = struct
-    let x get_player_info ls =
-      Lua.pushnumber ls (get_player_info ()).pos.x;
+    let x get_info ls =
+      Lua.pushnumber ls (get_info ()).pos.x;
       1
     ;;
 
-    let y get_player_info ls =
-      Lua.pushnumber ls (get_player_info ()).pos.y;
+    let y get_info ls =
+      Lua.pushnumber ls (get_info ()).pos.y;
       1
     ;;
 
-    let position get_player_info ls =
-      let p = (get_player_info ()).pos in
+    let position get_info ls =
+      let p = (get_info ()).pos in
       Lua.newtable ls;
       Lua.pushnumber ls p.x;
       Lua.setfield ls (-2) "x";
@@ -293,23 +296,38 @@ module Lua = struct
       1
     ;;
 
-    let heading get_player_info ls =
-      Lua.pushnumber ls (get_player_info ()).heading;
+    let heading get_info ls =
+      Lua.pushnumber ls (get_info ()).heading;
       1
     ;;
 
-    let view_direction get_player_info ls =
-      Lua.pushnumber ls (get_player_info ()).view_direction;
+    let head_direction get_info ls =
+      Lua.pushnumber ls (get_info ()).head_direction;
       1
     ;;
 
-    let attack_direction get_player_info ls =
-      Lua.pushnumber ls (get_player_info ()).attack_direction;
+    let arms_direction get_info ls =
+      Lua.pushnumber ls (get_info ()).arms_direction;
       1
     ;;
 
-    let hp get_player_info ls =
-      Lua.pushinteger ls (get_player_info ()).hp;
+    let turn_remaining get_info ls =
+      Lua.pushnumber ls (get_info ()).turn_remaining;
+      1
+    ;;
+
+    let head_turn_remaining get_info ls =
+      Lua.pushnumber ls (get_info ()).head_turn_remaining;
+      1
+    ;;
+
+    let arms_turn_remaining get_info ls =
+      Lua.pushnumber ls (get_info ()).arms_turn_remaining;
+      1
+    ;;
+
+    let hp get_info ls =
+      Lua.pushinteger ls (get_info ()).hp;
       1
     ;;
 
@@ -355,17 +373,20 @@ module Lua = struct
     ;;
   end
 
-  let create_lua_api ls name get_player_info =
+  let create_lua_api ls name get_info =
     Lua.pushmodule
       ls
       "me"
-      [ "x", Api.x get_player_info
-      ; "y", Api.y get_player_info
-      ; "position", Api.position get_player_info
-      ; "heading", Api.heading get_player_info
-      ; "view_direction", Api.view_direction get_player_info
-      ; "attack_direction", Api.attack_direction get_player_info
-      ; "hp", Api.hp get_player_info
+      [ "x", Api.x get_info
+      ; "y", Api.y get_info
+      ; "position", Api.position get_info
+      ; "heading", Api.heading get_info
+      ; "turn_remaining", Api.turn_remaining get_info
+      ; "view_direction", Api.head_direction get_info
+      ; "head_turn_remaining", Api.head_turn_remaining get_info
+      ; "attack_direction", Api.arms_direction get_info
+      ; "arms_turn_remaining", Api.arms_turn_remaining get_info
+      ; "hp", Api.hp get_info
       ; "move", Api.move Forward
       ; "move_forward", Api.move Forward
       ; "move_backward", Api.move Backward
@@ -385,9 +406,9 @@ module Lua = struct
       ]
   ;;
 
-  let load_implementation path name get_player_info =
+  let load_implementation path name get_info =
     let lua_state = lua_load_player_from_file path in
-    create_lua_api lua_state name get_player_info;
+    create_lua_api lua_state name get_info;
     make_lua_player lua_state
   ;;
 

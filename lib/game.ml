@@ -106,10 +106,18 @@ let update_state f game = { game with state = f game.state }
 
 let make_reader (player : Player.t) game_ref () =
   let player = State.get_player player !game_ref.state in
-  let { Player_state.pos; heading; hp; view_direction; attack_direction; _ } =
+  let { Player_state.pos; heading; hp; view_direction; attack_direction; intent; _ } =
     player.player_state
   in
-  { Player.pos; heading; hp; view_direction; attack_direction }
+  { Player.pos
+  ; hp
+  ; heading
+  ; head_direction = view_direction
+  ; arms_direction = attack_direction
+  ; turn_remaining = intent.turn_angle
+  ; head_turn_remaining = intent.view_angle
+  ; arms_turn_remaining = intent.attack_angle
+  }
 ;;
 
 let add_player ((player : Player.t), directory) game_ref =
@@ -240,18 +248,6 @@ let calculate_movement max_turn_rate (p : Point.t) old_heading (intent : Intent.
   }
 ;;
 
-let determine_intent old_intent cmds =
-  let apply_cmd intent = function
-    | Player.Command.Move (direction, distance) ->
-      Intent.set_movement intent { Intent.Movement.distance; direction }
-    | Attack -> { intent with attack = true }
-    | Turn turn_angle -> { intent with Intent.turn_angle }
-    | Turn_head view_angle -> { intent with view_angle }
-    | Turn_arms attack_angle -> { intent with attack_angle }
-  in
-  List.fold_left apply_cmd old_intent cmds
-;;
-
 (* TODO: only pass "obstacles" instead of whole state *)
 let is_valid_position
   ~arena_width
@@ -352,18 +348,17 @@ module Player_event = struct
   let compare e1 e2 = Int.compare (index e1) (index e2)
 end
 
+let clamp_turn_angle angle = Math.clamp angle (-.Math.half_pi) Math.half_pi
+
 let turn_body_part ~max_turn_rate ~current_direction ~angle =
   let abs_angle = Float.abs angle in
   let delta = Math.sign angle *. Float.min max_turn_rate abs_angle in
-  let new_direction =
-    Math.clamp (current_direction +. delta) (-.Math.half_pi) Math.half_pi
-  in
+  let new_direction = clamp_turn_angle (current_direction +. delta) in
   if new_direction = current_direction
   then None
   else (
     let remaining_angle =
-      Math.clamp (current_direction +. angle) (-.Math.half_pi) Math.half_pi
-      -. new_direction
+      clamp_turn_angle (current_direction +. angle) -. new_direction
     in
     Some (new_direction, remaining_angle))
 ;;
@@ -633,9 +628,31 @@ let read_player_commands (impl : Player.impl) player_events =
   |> reduce_commands
 ;;
 
+let clamp_angle_intent current_direction angle =
+  clamp_turn_angle (current_direction +. angle) -. current_direction
+;;
+
+let determine_intent (state : Player_state.t) cmds =
+  let old_intent = state.intent in
+  let apply_cmd intent = function
+    | Player.Command.Move (direction, distance) ->
+      Intent.set_movement intent { Intent.Movement.distance; direction }
+    | Attack -> { intent with attack = true }
+    | Turn turn_angle -> { intent with Intent.turn_angle }
+    | Turn_head angle ->
+      let view_angle = clamp_angle_intent state.view_direction angle in
+      { intent with view_angle }
+    | Turn_arms angle ->
+      let attack_angle = clamp_angle_intent state.attack_direction angle in
+      { intent with attack_angle }
+  in
+  List.fold_left apply_cmd old_intent cmds
+;;
+
+(* TODO: only pass in player state *)
 let update_intent player_data commands =
   let state = player_data.player_state in
-  let new_intent = determine_intent state.intent commands in
+  let new_intent = determine_intent state commands in
   { player_data with player_state = { state with intent = new_intent } }
 ;;
 
@@ -715,7 +732,7 @@ let run game_ref =
     game_ref := step !game_ref;
     match !game_ref.state.round_state with
     | Ongoing ->
-      Thread.delay 0.008;
+      Thread.delay 0.028;
       run_round ()
     | Draw ->
       print_endline "-- DRAW --";

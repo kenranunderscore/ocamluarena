@@ -31,8 +31,11 @@ type info =
   { hp : int
   ; pos : Point.t
   ; heading : float
-  ; view_direction : float
-  ; attack_direction : float
+  ; head_direction : float
+  ; arms_direction : float
+  ; turn_remaining : float
+  ; head_turn_remaining : float
+  ; arms_turn_remaining : float
   }
 
 module Id : sig

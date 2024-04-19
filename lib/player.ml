@@ -407,9 +407,10 @@ module Lua = struct
   ;;
 
   let load_implementation path name get_info =
-    let lua_state = lua_load_player_from_file path in
-    create_lua_api lua_state name get_info;
-    make_lua_player lua_state
+    let ls = lua_load_player_from_file path in
+    create_lua_api ls name get_info;
+    Lua_utils_api.push ls;
+    make_lua_player ls
   ;;
 
   let read_meta dir =

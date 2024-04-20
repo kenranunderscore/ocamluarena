@@ -648,11 +648,9 @@ let determine_intent (state : Player_state.t) cmds =
   List.fold_left apply_cmd old_intent cmds
 ;;
 
-(* TODO: only pass in player state *)
-let update_intent player_data commands =
-  let state = player_data.player_state in
+let update_intent state commands =
   let new_intent = determine_intent state commands in
-  { player_data with player_state = { state with intent = new_intent } }
+  { state with intent = new_intent }
 ;;
 
 (* TODO: vision events should probably be based on the state before any
@@ -695,7 +693,8 @@ let distribute_player_events game_events settings state =
       |> player_events_from_game_events settings player data.player_state
       |> List.sort Player_event.compare
       |> read_player_commands data.impl
-      |> update_intent data)
+      |> fun commands ->
+      { data with player_state = update_intent data.player_state commands })
     state
 ;;
 

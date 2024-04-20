@@ -478,7 +478,6 @@ let transition_attacks
 ;;
 
 let create_attacks (state : State.t) =
-  (* TODO: add "attacking player" events *)
   state
   |> State.living_players
   |> Players.filter_map (fun player data ->
@@ -497,6 +496,8 @@ let create_attacks (state : State.t) =
   |> Players.values
 ;;
 
+(** The game events that happen each tick, or are purely dependent on the
+    current tick, like "round started". *)
 let tick_events (state : State.t) =
   let events = [ Event.Tick state.tick ] in
   if state.tick = 0 then Event.Round_started state.round :: events else events
@@ -605,7 +606,7 @@ let process_game_events events _settings game_state =
     events
 ;;
 
-(* FIXME: player_event -> into player.ml? *)
+(* TODO: player_event -> into player.ml? *)
 let read_player_commands (impl : Player.impl) player_events =
   player_events
   |> List.concat_map (function
@@ -654,7 +655,10 @@ let update_intent player_data commands =
   { player_data with player_state = { state with intent = new_intent } }
 ;;
 
-let player_events_from_game_events player player_state game_events =
+(* TODO: vision events should probably be based on the state before any
+   movement? *)
+let player_events_from_game_events settings player player_state game_events =
+  let { Settings.player_angle_of_vision; player_radius; _ } = settings in
   List.fold_left
     (fun acc -> function
       | Event.Round_started round -> Player_event.Round_started round :: acc
@@ -667,43 +671,31 @@ let player_events_from_game_events player player_state game_events =
         let acc = Player_event.Hit_by owner.name :: acc in
         (* TODO: deduplicate *)
         if Player_state.is_dead player_state then Player_event.Death :: acc else acc
+      | Player_moved (other, move) ->
+        if other <> player
+           && can_spot
+                ~player_angle_of_vision
+                ~player_radius
+                player_state.pos
+                (Player_state.resulting_view_direction player_state)
+                move.position
+        then Enemy_seen (other.name, move.position) :: acc
+        else acc
       | Hit _ -> acc
       | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
-      | Head_turned _ | Arms_turned _ | Player_moved _ -> acc)
+      | Head_turned _ | Arms_turned _ -> acc)
     []
     game_events
 ;;
 
-(* TODO: vision events should probably be based on the state before any
-   movement? *)
 let distribute_player_events game_events settings state =
-  let { Settings.player_angle_of_vision; player_radius; _ } = settings in
   State.map_players
-    (fun meta p ->
-      let visible_players =
-        State.living_players state
-        |> Players.filter (fun other_meta other_p ->
-          meta <> other_meta
-          && can_spot
-               ~player_angle_of_vision
-               ~player_radius
-               p.player_state.pos
-               (Player_state.resulting_view_direction p.player_state)
-               other_p.player_state.pos)
-      in
-      let enemy_seen_events =
-        visible_players
-        |> Players.mapi (fun target_meta target ->
-          Player_event.Enemy_seen (target_meta.name, target.player_state.pos))
-        |> Players.values
-      in
-      let player_events =
-        game_events
-        |> player_events_from_game_events meta p.player_state
-        |> List.append enemy_seen_events
-        |> List.sort Player_event.compare
-      in
-      read_player_commands p.impl player_events |> update_intent p)
+    (fun player data ->
+      game_events
+      |> player_events_from_game_events settings player data.player_state
+      |> List.sort Player_event.compare
+      |> read_player_commands data.impl
+      |> update_intent data)
     state
 ;;
 

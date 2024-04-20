@@ -30,7 +30,6 @@ let rec first_with f pred =
 ;;
 
 let shuffle xs =
-  (* TODO: compare good? *)
   xs |> List.map (fun x -> Random.bits (), x) |> List.sort compare |> List.map snd
 ;;
 
@@ -327,6 +326,7 @@ module Player_event = struct
     | Tick of int
     | Round_started of int
     | Enemy_seen of string * Point.t
+    | Enemy_attacked of string
     | Attack_hit of string * Point.t
     | Hit_by of string
     | Round_over of Player.t option
@@ -337,11 +337,12 @@ module Player_event = struct
     | Tick _ -> 0
     | Round_started _ -> 1
     | Enemy_seen _ -> 2
-    | Attack_hit _ -> 3
-    | Hit_by _ -> 4
-    | Round_over _ -> 5
-    | Round_won -> 6
-    | Death -> 7
+    | Enemy_attacked _ -> 3
+    | Attack_hit _ -> 4
+    | Hit_by _ -> 5
+    | Round_over _ -> 6
+    | Round_won -> 7
+    | Death -> 8
   ;;
 
   let compare e1 e2 = Int.compare (index e1) (index e2)
@@ -612,6 +613,7 @@ let read_player_commands (impl : Player.impl) player_events =
   |> List.concat_map (function
     | Player_event.Tick n -> impl.on_tick n
     | Enemy_seen (enemy, pos) -> impl.on_enemy_seen enemy pos
+    | Enemy_attacked enemy -> impl.on_enemy_attack enemy
     | Attack_hit (enemy, pos) -> impl.on_attack_hit enemy pos
     | Hit_by enemy -> impl.on_hit_by enemy
     | Round_started n -> impl.on_round_started n
@@ -679,8 +681,18 @@ let player_events_from_game_events settings player player_state game_events =
                 move.position
         then Enemy_seen (other.name, move.position) :: acc
         else acc
+      | Attack_created (_, attack) ->
+        if attack.owner <> player
+           && can_spot
+                ~player_angle_of_vision
+                ~player_radius
+                player_state.pos
+                (Player_state.resulting_view_direction player_state)
+                attack.origin
+        then Enemy_attacked attack.owner.name :: acc
+        else acc
       | Hit _ -> acc
-      | Attack_missed _ | Attack_created _ | Attack_advanced _ -> acc
+      | Attack_missed _ | Attack_advanced _ -> acc
       | Head_turned _ | Arms_turned _ -> acc)
     []
     game_events

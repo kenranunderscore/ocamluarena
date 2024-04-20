@@ -56,6 +56,7 @@ type impl =
   { on_round_started : int -> Command.t list
   ; on_tick : int -> Command.t list
   ; on_enemy_seen : string -> Point.t -> Command.t list
+  ; on_enemy_attack : string -> Command.t list
   ; on_attack_hit : string -> Point.t -> Command.t list
   ; on_hit_by : string -> Command.t list
   ; on_death : unit -> unit
@@ -190,6 +191,19 @@ module Lua = struct
       lua_read_commands ls)
   ;;
 
+  let lua_enemy_attack ls name =
+    Lua.getfield ls 1 "on_enemy_attack";
+    if Lua.isnil ls (-1)
+    then (
+      Lua.pop ls 1;
+      [])
+    else (
+      (* TODO: custom payload -> lua table? *)
+      Lua.pushstring ls name;
+      Lua.call ls 1 1;
+      lua_read_commands ls)
+  ;;
+
   let lua_attack_hit ls name (pos : Point.t) =
     Lua.getfield ls 1 "on_attack_hit";
     if Lua.isnil ls (-1)
@@ -242,6 +256,7 @@ module Lua = struct
     { on_round_started = (fun round -> lua_round_started ls round)
     ; on_tick = (fun tick -> lua_tick ls tick)
     ; on_enemy_seen = (fun name pos -> lua_enemy_seen ls name pos)
+    ; on_enemy_attack = (fun name -> lua_enemy_attack ls name)
     ; on_attack_hit = (fun name pos -> lua_attack_hit ls name pos)
     ; on_hit_by = (fun name -> lua_hit_by ls name)
     ; on_death = (fun () -> lua_on_death ls)

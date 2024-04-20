@@ -11,6 +11,10 @@ function m.on_enemy_seen(name, x, y)
   return { me.attack(angle) }
 end
 
+function m.on_enemy_attack(name)
+  me.log("HELP, I am being attacked by " .. name)
+end
+
 function m.on_attack_hit(name, x, y)
   me.log("enemy " .. name .. " HIT at (" .. x .. ", " .. y .. ")")
 end

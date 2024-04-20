@@ -50,6 +50,7 @@ type impl =
   { on_round_started : int -> Command.t list
   ; on_tick : int -> Command.t list
   ; on_enemy_seen : string -> Point.t -> Command.t list
+  ; on_enemy_attack : string -> Command.t list
   ; on_attack_hit : string -> Point.t -> Command.t list
   ; on_hit_by : string -> Command.t list
   ; on_death : unit -> unit

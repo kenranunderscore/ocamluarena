@@ -664,7 +664,8 @@ let player_events_from_game_events settings player player_state game_events =
       | Event.Round_started round -> Player_event.Round_started round :: acc
       | Round_over (Some id) when id = player -> Player_event.Round_won :: acc
       | Round_over mwinner -> Player_event.Round_over mwinner :: acc
-      | Tick tick -> Player_event.Tick tick :: acc
+      | Tick tick ->
+        if Player_state.is_alive player_state then Player_event.Tick tick :: acc else acc
       | Hit (_, owner, victim, pos) when player = owner ->
         Player_event.Attack_hit (victim.name, pos) :: acc
       | Hit (_, owner, victim, _pos) when player = victim ->
